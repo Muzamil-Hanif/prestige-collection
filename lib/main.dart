@@ -5,10 +5,11 @@ import 'pages/splash_screen.dart';
 import 'pages/sign_in_page.dart';
 import 'pages/home_page.dart';
 import 'pages/products_page.dart';
-import 'pages/checkout_page.dart';
+import 'pages/my_cart.dart';
 import 'pages/about_page.dart';
 import 'pages/settings_page.dart';
 import 'pages/contact_page.dart';
+import 'services/storage_service.dart';
 
 void main() {
   runApp(const MyApp());
@@ -102,11 +103,94 @@ class MainScreen extends StatefulWidget {
 class _MainScreenState extends State<MainScreen> {
   int _currentIndex = 0;
 
+  // Shared cart items state
+  final List<Map<String, dynamic>> _cartItems = [];
+
+  // Add item to cart
+  void _addToCart(Map<String, dynamic> product) {
+    setState(() {
+      // Check if item already exists in cart (match by both name AND image)
+      final existingIndex = _cartItems.indexWhere(
+        (item) => item['name'] == product['name'] && 
+                  item['image'] == product['image'],
+      );
+      
+      if (existingIndex >= 0) {
+        // If exists, increase quantity
+        _cartItems[existingIndex]['quantity'] = 
+            (_cartItems[existingIndex]['quantity'] as int) + 1;
+      } else {
+        // If new, add to cart
+        // Extract price from string like "$89.99" to double
+        String priceStr = product['price'] as String;
+        double price = double.parse(priceStr.replaceAll('\$', '').replaceAll(',', ''));
+        
+        // Determine icon based on category
+        IconData icon = Icons.shopping_bag;
+        if (product['name'].toString().toLowerCase().contains('perfume') ||
+            product['name'].toString().toLowerCase().contains('fragrance') ||
+            product['name'].toString().toLowerCase().contains('cologne')) {
+          icon = Icons.spa;
+        } else if (product['name'].toString().toLowerCase().contains('watch')) {
+          icon = Icons.watch;
+        } else if (product['name'].toString().toLowerCase().contains('wallet')) {
+          icon = Icons.account_balance_wallet;
+        }
+        
+        _cartItems.add({
+          'name': product['name'],
+          'price': price,
+          'quantity': 1,
+          'icon': icon,
+          'image': product['image'],
+        });
+      }
+    });
+  }
+
+  // Remove item from cart
+  void _removeFromCart(int index) {
+    setState(() {
+      _cartItems.removeAt(index);
+    });
+  }
+
+  // Update item quantity
+  void _updateCartItemQuantity(int index, int quantity) {
+    setState(() {
+      if (quantity <= 0) {
+        _cartItems.removeAt(index);
+      } else {
+        _cartItems[index]['quantity'] = quantity;
+      }
+    });
+  }
+
   // List of pages for bottom navigation
-  final List<Widget> _pages = [
+  List<Widget> get _pages => [
     const HomePage(),
-    const ProductsPage(),
-    const CheckoutPage(),
+    ProductsPage(
+      onAddToCart: _addToCart,
+      onNavigateToCart: () {
+        // Dismiss all active SnackBars before navigating
+        ScaffoldMessenger.of(context).clearSnackBars();
+        setState(() {
+          _currentIndex = 2; // Navigate to My Cart page
+        });
+      },
+    ),
+    MyCart(
+      cartItems: _cartItems,
+      onRemoveFromCart: _removeFromCart,
+      onUpdateQuantity: _updateCartItemQuantity,
+      onNavigateToProducts: () {
+        // Dismiss all active SnackBars before navigating
+        ScaffoldMessenger.of(context).clearSnackBars();
+        setState(() {
+          _currentIndex = 1; // Navigate to Products page
+        });
+      },
+    ),
   ];
 
   // Get dynamic AppBar title based on current page
@@ -115,19 +199,19 @@ class _MainScreenState extends State<MainScreen> {
       case 0: // Home
         return SvgPicture.asset(
           'assets/images/prestige-men-logo-V4.svg',
-          height: 46,
-          width: 46,
+          height: 66,
+          width: 66,
           fit: BoxFit.contain,
         );
       case 1: // Products
         return const Text(
           'Products',
-          style: TextStyle(color: Colors.black87, fontSize: 20, fontWeight: FontWeight.bold),
         );
+    
       case 2: // My Cart
         return const Text(
           'My Cart',
-          style: TextStyle(color: Colors.black87, fontSize: 20, fontWeight: FontWeight.bold),
+
         );
       default:
         return null;
@@ -155,12 +239,42 @@ class _MainScreenState extends State<MainScreen> {
         title: _getAppBarTitle(),
       ),
       drawer: _buildDrawer(context),
-      body: _pages[_currentIndex],
+      body: AnimatedSwitcher(
+        duration: const Duration(milliseconds: 600),
+        switchInCurve: Curves.easeInOutCubic,
+        switchOutCurve: Curves.easeInOutCubic,
+        transitionBuilder: (Widget child, Animation<double> animation) {
+          return FadeTransition(
+            opacity: animation,
+            child: SlideTransition(
+              position: Tween<Offset>(
+                begin: const Offset(0.05, 0.0),
+                end: Offset.zero,
+              ).animate(CurvedAnimation(
+                parent: animation,
+                curve: Curves.easeInOutCubic,
+              )),
+              child: child,
+            ),
+          );
+        },
+        child: Container(
+          key: ValueKey<int>(_currentIndex),
+          child: _pages[_currentIndex],
+        ),
+      ),
       bottomNavigationBar: BottomNavigationBar(
         currentIndex: _currentIndex,
         onTap: (index) {
-          setState(() {
-            _currentIndex = index;
+          // Dismiss all active SnackBars before navigating
+          ScaffoldMessenger.of(context).clearSnackBars();
+          // Add a small delay for smoother transition
+          Future.delayed(const Duration(milliseconds: 200), () {
+            if (mounted) {
+              setState(() {
+                _currentIndex = index;
+              });
+            }
           });
         },
         items: const [
@@ -211,7 +325,10 @@ class _MainScreenState extends State<MainScreen> {
             onTap: () {
               Navigator.pop(context);
               ScaffoldMessenger.of(context).showSnackBar(
-                const SnackBar(content: Text('Orders page coming soon')),
+                const SnackBar(
+                  content: Text('Orders page coming soon'),
+                  duration: Duration(seconds: 3),
+                ),
               );
             },
           ),
@@ -257,7 +374,10 @@ class _MainScreenState extends State<MainScreen> {
             onTap: () {
               Navigator.pop(context);
               ScaffoldMessenger.of(context).showSnackBar(
-                const SnackBar(content: Text('Privacy Policy page coming soon')),
+                const SnackBar(
+                  content: Text('Privacy Policy page coming soon'),
+                  duration: Duration(seconds: 3),
+                ),
               );
             },
           ),
@@ -267,7 +387,10 @@ class _MainScreenState extends State<MainScreen> {
             onTap: () {
               Navigator.pop(context);
               ScaffoldMessenger.of(context).showSnackBar(
-                const SnackBar(content: Text('Terms & Conditions page coming soon')),
+                const SnackBar(
+                  content: Text('Terms & Conditions page coming soon'),
+                  duration: Duration(seconds: 3),
+                ),
               );
             },
           ),
@@ -298,15 +421,20 @@ class _MainScreenState extends State<MainScreen> {
                       child: const Text('Cancel'),
                     ),
                     TextButton(
-                      onPressed: () {
+                      onPressed: () async {
                         Navigator.pop(context);
+                        // Clear stored authentication data
+                        await StorageService.clearAll();
                         // Navigate back to sign in page
                         Navigator.of(context).pushAndRemoveUntil(
                           MaterialPageRoute(builder: (context) => const SignInPage()),
                           (route) => false,
                         );
                         ScaffoldMessenger.of(context).showSnackBar(
-                          const SnackBar(content: Text('Logged out successfully')),
+                          const SnackBar(
+                            content: Text('Logged out successfully'),
+                            duration: Duration(seconds: 3),
+                          ),
                         );
                       },
                       child: const Text(

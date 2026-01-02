@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_svg/flutter_svg.dart';
 import '../main.dart' show MainScreen;
+import '../services/api_service.dart';
 import 'sign_up_page.dart';
 import 'forgot_password_page.dart';
 
@@ -25,24 +26,42 @@ class _SignInPageState extends State<SignInPage> {
     super.dispose();
   }
 
-  void _handleSignIn() {
+  void _handleSignIn() async {
     if (_formKey.currentState!.validate()) {
       setState(() {
         _isLoading = true;
       });
 
-      // Simulate API call
-      Future.delayed(const Duration(seconds: 1), () {
+      try {
+        // Call API to login
+        await ApiService.login(
+          _emailController.text.trim(),
+          _passwordController.text,
+        );
+
         if (mounted) {
           setState(() {
             _isLoading = false;
           });
-          // Navigate to main screen (no actual authentication for now)
+          // Navigate to main screen
           Navigator.of(context).pushReplacement(
             MaterialPageRoute(builder: (context) => const MainScreen()),
           );
         }
-      });
+      } catch (e) {
+        if (mounted) {
+          setState(() {
+            _isLoading = false;
+          });
+          ScaffoldMessenger.of(context).showSnackBar(
+            SnackBar(
+              content: Text(e.toString().replaceAll('Exception: ', '')),
+              backgroundColor: Colors.red,
+              duration: const Duration(seconds: 3),
+            ),
+          );
+        }
+      }
     }
   }
 

@@ -11,6 +11,8 @@ class HomePage extends StatefulWidget {
 class _HomePageState extends State<HomePage> {
   int _selectedCategoryIndex = 0;
   final List<String> _categories = ['All Items', 'Perfumes', 'Watches', 'Wallets'];
+  final TextEditingController _searchController = TextEditingController();
+  String _searchQuery = '';
 
   @override
   Widget build(BuildContext context) {
@@ -67,15 +69,32 @@ class _HomePageState extends State<HomePage> {
                     borderRadius: BorderRadius.circular(12),
                   ),
                   child: TextField(
+                    controller: _searchController,
                     style: const TextStyle(color: Colors.white),
+                    cursorColor: Colors.white,
+                    onChanged: (value) {
+                      setState(() {
+                        _searchQuery = value.toLowerCase();
+                      });
+                    },
                     decoration: InputDecoration(
                       hintText: 'Search here...',
                       hintStyle: TextStyle(color: Colors.white.withOpacity(0.5)),
                       prefixIcon: const Icon(Icons.search, color: Colors.white),
-                      suffixIcon: IconButton(
-                        icon: const Icon(Icons.tune, color: Colors.white),
-                        onPressed: () {},
-                      ),
+                      suffixIcon: _searchQuery.isNotEmpty
+                          ? IconButton(
+                              icon: const Icon(Icons.clear, color: Colors.white),
+                              onPressed: () {
+                                setState(() {
+                                  _searchController.clear();
+                                  _searchQuery = '';
+                                });
+                              },
+                            )
+                          : IconButton(
+                              icon: const Icon(Icons.tune, color: Colors.white),
+                              onPressed: () {},
+                            ),
                       border: OutlineInputBorder(
                         borderRadius: BorderRadius.circular(12),
                         borderSide: BorderSide.none,
@@ -158,20 +177,51 @@ class _HomePageState extends State<HomePage> {
               // Product Grid
               Padding(
                 padding: const EdgeInsets.symmetric(horizontal: 16.0),
-                child: GridView.builder(
-                  shrinkWrap: true,
-                  physics: const NeverScrollableScrollPhysics(),
-                  gridDelegate: const SliverGridDelegateWithFixedCrossAxisCount(
-                    crossAxisCount: 2,
-                    childAspectRatio: 0.75,
-                    crossAxisSpacing: 16,
-                    mainAxisSpacing: 16,
-                  ),
-                  itemCount: 4,
-                  itemBuilder: (context, index) {
-                    return _buildProductCard(context, index);
-                  },
-                ),
+                child: _getFilteredProducts().isEmpty
+                    ? Padding(
+                        padding: const EdgeInsets.all(40.0),
+                        child: Center(
+                          child: Column(
+                            children: [
+                              Icon(
+                                Icons.search_off,
+                                size: 64,
+                                color: Colors.grey.shade400,
+                              ),
+                              const SizedBox(height: 16),
+                              Text(
+                                'No products found',
+                                style: TextStyle(
+                                  color: Colors.grey.shade600,
+                                  fontSize: 16,
+                                ),
+                              ),
+                              const SizedBox(height: 8),
+                              Text(
+                                'Try a different search term',
+                                style: TextStyle(
+                                  color: Colors.grey.shade500,
+                                  fontSize: 14,
+                                ),
+                              ),
+                            ],
+                          ),
+                        ),
+                      )
+                    : GridView.builder(
+                        shrinkWrap: true,
+                        physics: const NeverScrollableScrollPhysics(),
+                        gridDelegate: const SliverGridDelegateWithFixedCrossAxisCount(
+                          crossAxisCount: 2,
+                          childAspectRatio: 0.75,
+                          crossAxisSpacing: 16,
+                          mainAxisSpacing: 16,
+                        ),
+                        itemCount: _getFilteredProducts().length,
+                        itemBuilder: (context, index) {
+                          return _buildProductCard(context, index, _getFilteredProducts()[index]);
+                        },
+                      ),
               ),
 
               const SizedBox(height: 24),
@@ -180,6 +230,12 @@ class _HomePageState extends State<HomePage> {
         ),
       ),
     );
+  }
+
+  @override
+  void dispose() {
+    _searchController.dispose();
+    super.dispose();
   }
 
   IconData _getCategoryIcon(int index) {
@@ -197,9 +253,8 @@ class _HomePageState extends State<HomePage> {
     }
   }
 
-  Widget _buildProductCard(BuildContext context, int index) {
-    final cs = Theme.of(context).colorScheme;
-    final products = [
+  List<Map<String, dynamic>> _getAllProducts() {
+    return [
       {
         'name': 'Modern Clothes',
         'category': 'T-Shirt',
@@ -210,7 +265,7 @@ class _HomePageState extends State<HomePage> {
       },
       {
         'name': 'Laorentou',
-        'category':  'Wallet',
+        'category': 'Wallet',
         'price': '\$162.99',
         'rating': '5.0',
         'icon': Icons.checkroom,
@@ -223,7 +278,6 @@ class _HomePageState extends State<HomePage> {
         'rating': '4.8',
         'icon': Icons.spa,
         'image': 'assets/images/perfume-d&g4.jpeg',
-        
       },
       {
         'name': 'Rolex Steel Sports Models',
@@ -231,11 +285,40 @@ class _HomePageState extends State<HomePage> {
         'price': '\$299.99',
         'rating': '4.9',
         'icon': Icons.watch,
-        'image': 'assets/images/watch-rolex.webp', 
+        'image': 'assets/images/watch-rolex.webp',
       },
     ];
+  }
 
-    final product = products[index % products.length];
+  List<Map<String, dynamic>> _getFilteredProducts() {
+    List<Map<String, dynamic>> allProducts = _getAllProducts();
+    
+    // Filter by category
+    List<Map<String, dynamic>> filtered = allProducts;
+    if (_selectedCategoryIndex > 0) {
+      String selectedCategory = _categories[_selectedCategoryIndex];
+      filtered = allProducts.where((product) {
+        String category = product['category'] as String;
+        return (selectedCategory == 'Perfumes' && category == 'Perfume') ||
+               (selectedCategory == 'Watches' && category == 'Watch') ||
+               (selectedCategory == 'Wallets' && category == 'Wallet');
+      }).toList();
+    }
+    
+    // Filter by search query
+    if (_searchQuery.isNotEmpty) {
+      filtered = filtered.where((product) {
+        String name = (product['name'] as String).toLowerCase();
+        String category = (product['category'] as String).toLowerCase();
+        return name.contains(_searchQuery) || category.contains(_searchQuery);
+      }).toList();
+    }
+    
+    return filtered;
+  }
+
+  Widget _buildProductCard(BuildContext context, int index, Map<String, dynamic> product) {
+    final cs = Theme.of(context).colorScheme;
 
     return Container(
       decoration: BoxDecoration(
