@@ -1,0 +1,40 @@
+{
+  "$schema": "https://json.schemastore.org/claude-code-settings.json",
+  "permissions": {
+    "allow": [
+      "Bash(flutter *)",
+      "Bash(dart *)",
+      "Bash(git status)",
+      "Bash(git diff *)",
+      "Bash(git log *)",
+      "Read(lib/**)",
+      "Read(test/**)",
+      "Read(pubspec.yaml)",
+      "Read(pubspec.lock)",
+      "Read(.claude/**)"
+    ],
+    "deny": ["Read(.env)", "Read(*.pem)", "Read(secrets/**)"]
+  },
+  "env": {
+    "FLUTTER_CHANNEL": "stable"
+  },
+  "hooks": {
+    "PreToolUse": [
+      {
+        "matcher": "Bash",
+        "hooks": [
+          {
+            "type": "prompt",
+            "prompt": "User is running a git commit. Before they proceed, ask: 'Before committing, have you updated CLAUDE.md to reflect your changes? Check: new commands, dependencies, patterns, or architecture updates.' If they confirm, respond with {\"ok\": true}. If unsure, respond with {\"ok\": false, \"reason\": \"User should update CLAUDE.md first\"}.",
+            "if": "Bash(git commit*)"
+          },
+          {
+            "type": "prompt",
+            "prompt": "User is starting Flutter app with 'flutter run'. Ask: 'Is your NestJS backend running? Run /check-api to verify backend health before proceeding.' Respond with {\"ok\": true} when ready.",
+            "if": "Bash(flutter run*)"
+          }
+        ]
+      }
+    ]
+  }
+}
