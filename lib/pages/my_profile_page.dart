@@ -7,6 +7,7 @@ import 'package:image_picker/image_picker.dart';
 
 import '../models/user_model.dart';
 import '../services/api_service.dart';
+import '../utils/responsive.dart';
 
 class MyProfilePage extends StatefulWidget {
   const MyProfilePage({super.key});
@@ -639,15 +640,18 @@ class _MyProfilePageState extends State<MyProfilePage> {
           statusBarBrightness: Brightness.dark,
         ),
       ),
-      body: Container(
-        decoration: const BoxDecoration(
-          gradient: LinearGradient(
-            begin: Alignment.topCenter,
-            end: Alignment.bottomCenter,
-            colors: [Color(0xFF0F172A), Color(0xFF111827), Color(0xFF172033)],
-          ),
-        ),
-        child: SafeArea(
+      body: Center(
+        child: ConstrainedBox(
+          constraints: const BoxConstraints(maxWidth: 720),
+          child: Container(
+            decoration: const BoxDecoration(
+              gradient: LinearGradient(
+                begin: Alignment.topCenter,
+                end: Alignment.bottomCenter,
+                colors: [Color(0xFF0F172A), Color(0xFF111827), Color(0xFF172033)],
+              ),
+            ),
+            child: SafeArea(
           child: _isLoading
               ? const Center(
                   child: CircularProgressIndicator(
@@ -693,6 +697,8 @@ class _MyProfilePageState extends State<MyProfilePage> {
                   : _buildProfileForm(),
         ),
       ),
+      ),
+      ),
       bottomNavigationBar: Container(
         padding: EdgeInsets.fromLTRB(
           16,
@@ -733,8 +739,8 @@ class _MyProfilePageState extends State<MyProfilePage> {
                     ),
                   ),
           ),
+            ),
         ),
-      ),
     );
   }
 }

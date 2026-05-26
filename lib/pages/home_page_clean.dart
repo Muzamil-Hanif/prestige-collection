@@ -6,6 +6,7 @@ import 'package:flutter/material.dart';
 import '../models/product_model.dart';
 import '../models/user_model.dart';
 import '../services/api_service.dart';
+import '../utils/responsive.dart';
 import 'my_profile_page.dart';
 
 class HomePage extends StatefulWidget {
@@ -309,7 +310,7 @@ class _HomePageState extends State<HomePage> {
                 ],
               ),
               const SizedBox(height: 18),
-              _buildPromoSlider(),
+              _buildPromoSlider(context),
               const SizedBox(height: 20),
               Row(
                 mainAxisAlignment: MainAxisAlignment.spaceBetween,
@@ -343,8 +344,8 @@ class _HomePageState extends State<HomePage> {
                   shrinkWrap: true,
                   physics: const NeverScrollableScrollPhysics(),
                   itemCount: _homeCategoryCodes.length,
-                  gridDelegate: const SliverGridDelegateWithFixedCrossAxisCount(
-                    crossAxisCount: 2,
+                  gridDelegate: SliverGridDelegateWithFixedCrossAxisCount(
+                    crossAxisCount: Responsive.gridColumns(context),
                     crossAxisSpacing: 12,
                     mainAxisSpacing: 12,
                     childAspectRatio: 0.58,
@@ -362,11 +363,11 @@ class _HomePageState extends State<HomePage> {
     );
   }
 
-  Widget _buildPromoSlider() {
+  Widget _buildPromoSlider(BuildContext ctx) {
     return Column(
       children: [
         SizedBox(
-          height: 140,
+          height: Responsive.bannerHeight(ctx),
           child: PageView.builder(
             controller: _bannerController,
             itemCount: _promoBanners.length,

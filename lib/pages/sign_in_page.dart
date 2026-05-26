@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_svg/flutter_svg.dart';
 import '../main.dart' show MainScreen;
 import '../services/api_service.dart';
+import '../utils/responsive.dart';
 import 'sign_up_page.dart';
 import 'forgot_password_page.dart';
 
@@ -71,9 +72,12 @@ class _SignInPageState extends State<SignInPage> {
     return Scaffold(
       backgroundColor: const Color(0xFFF5F5F5),
       body: SafeArea(
-        child: SingleChildScrollView(
-          padding: const EdgeInsets.all(24.0),
-          child: Form(
+        child: Center(
+          child: ConstrainedBox(
+            constraints: const BoxConstraints(maxWidth: 480),
+            child: SingleChildScrollView(
+              padding: const EdgeInsets.all(24.0),
+              child: Form(
             key: _formKey,
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.stretch,
@@ -83,8 +87,8 @@ class _SignInPageState extends State<SignInPage> {
                 Center(
                   child: SvgPicture.asset(
                     'assets/images/prestige-men-logo-V4.svg',
-                    height: 120,
-                    width: 120,
+                    height: Responsive.logoSize(context),
+                    width: Responsive.logoSize(context),
                     fit: BoxFit.contain,
                   ),
                 ),
@@ -286,6 +290,8 @@ class _SignInPageState extends State<SignInPage> {
                   ],
                 ),
               ],
+            ),
+              ),
             ),
           ),
         ),

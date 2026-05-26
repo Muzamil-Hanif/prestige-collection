@@ -13,6 +13,7 @@ import 'pages/contact_page.dart';
 import 'services/storage_service.dart';
 import 'services/api_service.dart';
 import 'services/api_config.dart';
+import 'utils/responsive.dart';
 
 void main() {
   ApiService.setProduction(ApiConfig.isProduction);
@@ -153,13 +154,60 @@ class _MainScreenState extends State<MainScreen> {
         setState(() {
           _cartItems
             ..clear()
-            ..addAll(serverCart);
+            ..addAll(_normalizeCartItems(serverCart));
         });
         await _persistCart();
       }
     } catch (_) {
       // Backend cart endpoint may not exist yet; keep local cart.
     }
+  }
+
+  /// Normalize cart items from backend: flatten nested product structures and ensure required fields.
+  List<Map<String, dynamic>> _normalizeCartItems(List<Map<String, dynamic>> items) {
+    return items.map((item) {
+      final normalized = Map<String, dynamic>.from(item);
+
+      // If price is missing but product is nested, extract from there
+      if ((normalized['price'] == null || normalized['price'] is! num) &&
+          normalized['product'] is Map<String, dynamic>) {
+        final product = normalized['product'] as Map<String, dynamic>;
+        normalized['price'] = _parsePrice(product['price']);
+
+        // Also flatten other product fields if not already present
+        if (normalized['name'] == null && product['name'] != null) {
+          normalized['name'] = product['name'];
+        }
+        if (normalized['image'] == null && product['image'] != null) {
+          normalized['image'] = product['image'];
+        }
+        if (normalized['id'] == null && product['id'] != null) {
+          normalized['id'] = product['id'];
+        }
+      }
+
+      // Ensure price is a double
+      if (normalized['price'] != null && normalized['price'] is! double) {
+        normalized['price'] = _parsePrice(normalized['price']);
+      }
+
+      // Default price to 0 if still missing
+      if (normalized['price'] == null) {
+        normalized['price'] = 0.0;
+      }
+
+      return normalized;
+    }).toList();
+  }
+
+  /// Parse price from various formats (num, String, etc.)
+  double _parsePrice(dynamic price) {
+    if (price is num) {
+      return price.toDouble();
+    } else if (price is String) {
+      return double.tryParse(price.replaceAll('\$', '').replaceAll(',', '')) ?? 0.0;
+    }
+    return 0.0;
   }
 
   /// Cart rows may include non-JSON `IconData`; strip before persisting.
@@ -526,11 +574,13 @@ class _MainScreenState extends State<MainScreen> {
     }
   }
 
-  @override
-  Widget build(BuildContext context) {
-    return Scaffold(
-      backgroundColor: Color(0xFFF5F5F5),
-      appBar: AppBar(
+  // Build AppBar with conditional TabBar for wide screens
+  PreferredSizeWidget _buildAppBar(BuildContext context) {
+    final isWideScreen = Responsive.isTablet(context) || Responsive.isDesktop(context);
+
+    if (!isWideScreen) {
+      // Mobile: standard AppBar with menu button and title
+      return AppBar(
         backgroundColor: Colors.transparent,
         elevation: 0,
         systemOverlayStyle: const SystemUiOverlayStyle(
@@ -545,36 +595,133 @@ class _MainScreenState extends State<MainScreen> {
           ),
         ),
         title: _getAppBarTitle(),
+      );
+    }
+
+    // Tablet/Desktop: AppBar with TabBar
+    return AppBar(
+      backgroundColor: Colors.transparent,
+      elevation: 0,
+      systemOverlayStyle: const SystemUiOverlayStyle(
+        statusBarColor: Colors.transparent,
+        statusBarIconBrightness: Brightness.dark,
+        statusBarBrightness: Brightness.light,
       ),
-      drawer: _buildDrawer(context),
-      body: AnimatedSwitcher(
-        duration: const Duration(milliseconds: 600),
-        switchInCurve: Curves.easeInOutCubic,
-        switchOutCurve: Curves.easeInOutCubic,
-        transitionBuilder: (Widget child, Animation<double> animation) {
-          return FadeTransition(
-            opacity: animation,
-            child: SlideTransition(
-              position:
-                  Tween<Offset>(
-                    begin: const Offset(0.05, 0.0),
-                    end: Offset.zero,
-                  ).animate(
-                    CurvedAnimation(
-                      parent: animation,
-                      curve: Curves.easeInOutCubic,
-                    ),
-                  ),
-              child: child,
-            ),
-          );
-        },
-        child: Container(
-          key: ValueKey<int>(_currentIndex),
-          child: _pages[_currentIndex],
+      leading: Builder(
+        builder: (context) => IconButton(
+          icon: const Icon(Icons.menu, color: Colors.black87),
+          onPressed: () => Scaffold.of(context).openDrawer(),
         ),
       ),
-      bottomNavigationBar: _buildGradientBottomBar(context),
+      title: SvgPicture.asset(
+        'assets/images/prestige-men-logo-V4.svg',
+        height: 50,
+        width: 50,
+        fit: BoxFit.contain,
+      ),
+      bottom: PreferredSize(
+        preferredSize: const Size.fromHeight(60),
+        child: Container(
+          padding: const EdgeInsets.symmetric(horizontal: 16),
+          child: Row(
+            mainAxisAlignment: MainAxisAlignment.center,
+            children: [
+              _buildTabBarItem(0, Icons.home_rounded, 'Home'),
+              const SizedBox(width: 32),
+              _buildTabBarItem(1, Icons.shopping_bag_rounded, 'Products'),
+              const SizedBox(width: 32),
+              _buildTabBarItem(2, Icons.shopping_cart_rounded, 'My Cart'),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+
+  // Build individual tab bar item
+  Widget _buildTabBarItem(int index, IconData icon, String label) {
+    final isSelected = _currentIndex == index;
+    return InkWell(
+      onTap: () async {
+        ScaffoldMessenger.of(context).clearSnackBars();
+        if (_currentIndex == index) return;
+        await Future.delayed(const Duration(milliseconds: 90));
+        if (!mounted) return;
+        setState(() => _currentIndex = index);
+      },
+      child: Column(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          Icon(
+            icon,
+            color: isSelected ? const Color(0xFFF2C94C) : Colors.black87,
+            size: isSelected ? 24 : 20,
+          ),
+          const SizedBox(height: 4),
+          Text(
+            label,
+            style: TextStyle(
+              color: isSelected ? const Color(0xFFF2C94C) : Colors.black87,
+              fontSize: 13,
+              fontWeight: isSelected ? FontWeight.w700 : FontWeight.w500,
+            ),
+          ),
+          const SizedBox(height: 12),
+          if (isSelected)
+            Container(
+              height: 3,
+              width: 40,
+              decoration: BoxDecoration(
+                color: const Color(0xFFF2C94C),
+                borderRadius: BorderRadius.circular(1.5),
+              ),
+            ),
+        ],
+      ),
+    );
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final isWideScreen = Responsive.isTablet(context) || Responsive.isDesktop(context);
+
+    return Scaffold(
+      backgroundColor: Color(0xFFF5F5F5),
+      appBar: _buildAppBar(context),
+      drawer: _buildDrawer(context),
+      body: Center(
+        child: ConstrainedBox(
+          constraints: const BoxConstraints(maxWidth: 1200),
+          child: AnimatedSwitcher(
+            duration: const Duration(milliseconds: 600),
+            switchInCurve: Curves.easeInOutCubic,
+            switchOutCurve: Curves.easeInOutCubic,
+            transitionBuilder: (Widget child, Animation<double> animation) {
+              return FadeTransition(
+                opacity: animation,
+                child: SlideTransition(
+                  position:
+                      Tween<Offset>(
+                        begin: const Offset(0.05, 0.0),
+                        end: Offset.zero,
+                      ).animate(
+                        CurvedAnimation(
+                          parent: animation,
+                          curve: Curves.easeInOutCubic,
+                        ),
+                      ),
+                  child: child,
+                ),
+              );
+            },
+            child: Container(
+              key: ValueKey<int>(_currentIndex),
+              child: _pages[_currentIndex],
+            ),
+          ),
+        ),
+      ),
+      bottomNavigationBar: !isWideScreen ? _buildGradientBottomBar(context) : null,
     );
   }
 

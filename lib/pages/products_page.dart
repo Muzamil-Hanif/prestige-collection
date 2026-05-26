@@ -2,6 +2,7 @@ import 'dart:async';
 import 'package:flutter/material.dart';
 import '../services/api_service.dart';
 import '../models/product_model.dart';
+import '../utils/responsive.dart';
 
 class ProductsPage extends StatefulWidget {
   final Function(Map<String, dynamic>) onAddToCart;

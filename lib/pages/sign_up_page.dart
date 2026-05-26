@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_svg/flutter_svg.dart';
 import '../services/api_service.dart';
+import '../utils/responsive.dart';
 import 'sign_in_page.dart';
 
 class SignUpPage extends StatefulWidget {
@@ -84,9 +85,12 @@ class _SignUpPageState extends State<SignUpPage> {
         ),
       ),
       body: SafeArea(
-        child: SingleChildScrollView(
-          padding: const EdgeInsets.symmetric(horizontal: 24),
-          child: Form(
+        child: Center(
+          child: ConstrainedBox(
+            constraints: const BoxConstraints(maxWidth: 480),
+            child: SingleChildScrollView(
+              padding: const EdgeInsets.symmetric(horizontal: 24),
+              child: Form(
             key: _formKey,
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.stretch,
@@ -96,8 +100,8 @@ class _SignUpPageState extends State<SignUpPage> {
                 Center(
                   child: SvgPicture.asset(
                     'assets/images/prestige-men-logo-V4.svg',
-                    height: 120,
-                    width: 120,
+                    height: Responsive.logoSize(context),
+                    width: Responsive.logoSize(context),
                     fit: BoxFit.contain,
                   ),
                 ),
@@ -361,6 +365,8 @@ class _SignUpPageState extends State<SignUpPage> {
                   ],
                 ),
               ],
+            ),
+              ),
             ),
           ),
         ),

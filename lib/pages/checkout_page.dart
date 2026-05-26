@@ -4,6 +4,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 
 import '../services/api_service.dart';
+import '../utils/responsive.dart';
 
 /// Allows optional leading `+` and digits only; `+` must be first if present.
 class _PhoneDigitsPlusFormatter extends TextInputFormatter {
@@ -391,22 +392,25 @@ class _CheckoutPageState extends State<CheckoutPage> {
             onPressed: () => Navigator.pop(context),
           ),
         ),
-        body: Container(
-          width: double.infinity,
-          height: double.infinity,
-          decoration: BoxDecoration(
-            gradient: LinearGradient(
-              begin: Alignment.topCenter,
-              end: Alignment.bottomCenter,
-              colors: [
-                Color.lerp(cs.surfaceContainerHighest, Colors.black, 0.12) ??
+        body: Center(
+          child: ConstrainedBox(
+            constraints: const BoxConstraints(maxWidth: 800),
+            child: Container(
+              width: double.infinity,
+              height: double.infinity,
+              decoration: BoxDecoration(
+                gradient: LinearGradient(
+                  begin: Alignment.topCenter,
+                  end: Alignment.bottomCenter,
+                  colors: [
+                    Color.lerp(cs.surfaceContainerHighest, Colors.black, 0.12) ??
+                        cs.surfaceContainerHighest,
                     cs.surfaceContainerHighest,
-                cs.surfaceContainerHighest,
-                Color.lerp(cs.surface, Colors.black, 0.25) ?? cs.surface,
-              ],
-            ),
-          ),
-          child: SafeArea(
+                    Color.lerp(cs.surface, Colors.black, 0.25) ?? cs.surface,
+                  ],
+                ),
+              ),
+              child: SafeArea(
             child: Form(
               key: _formKey,
               child: Column(
@@ -428,6 +432,8 @@ class _CheckoutPageState extends State<CheckoutPage> {
             ),
           ),
         ),
+        ),
+      ),
         bottomNavigationBar: Container(
           padding: EdgeInsets.fromLTRB(
             16,
@@ -859,7 +865,7 @@ class _CheckoutPageState extends State<CheckoutPage> {
                       ),
                     ),
                     Text(
-                      '\$${((item['price'] as double) * (item['quantity'] as int)).toStringAsFixed(2)}',
+                      '\$${(((item['price'] as double?) ?? 0.0) * (item['quantity'] as int)).toStringAsFixed(2)}',
                       style: TextStyle(
                         fontWeight: FontWeight.w700,
                         color: cs.secondary,
@@ -926,76 +932,92 @@ class _CheckoutPageState extends State<CheckoutPage> {
         decoration: _cardDecoration(cs),
         child: Theme(
           data: Theme.of(context).copyWith(radioTheme: radioTheme),
-          child: RadioGroup<String>(
-            groupValue: _selectedPaymentMethod,
-            onChanged: (value) {
-              if (value != null) {
-                setState(() => _selectedPaymentMethod = value);
-              }
-            },
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.stretch,
-              children: [
-                Padding(
-                  padding: const EdgeInsets.fromLTRB(16, 12, 16, 4),
-                  child: _buildSectionHeader(
-                    cs,
-                    'Payment Method',
-                    Icons.payment_outlined,
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.stretch,
+            children: [
+              Padding(
+                padding: const EdgeInsets.fromLTRB(16, 12, 16, 4),
+                child: _buildSectionHeader(
+                  cs,
+                  'Payment Method',
+                  Icons.payment_outlined,
+                ),
+              ),
+              RadioListTile<String>(
+                title: Text(
+                  'Credit Card',
+                  style: TextStyle(color: cs.onSurface),
+                ),
+                subtitle: Text(
+                  'Visa, Mastercard, Amex',
+                  style: TextStyle(
+                    color: cs.onSurface.withValues(alpha: 0.55),
                   ),
                 ),
-                RadioListTile<String>(
-                  title: Text(
-                    'Credit Card',
-                    style: TextStyle(color: cs.onSurface),
-                  ),
-                  subtitle: Text(
-                    'Visa, Mastercard, Amex',
-                    style: TextStyle(
-                      color: cs.onSurface.withValues(alpha: 0.55),
-                    ),
-                  ),
-                  value: 'Credit Card',
+                value: 'Credit Card',
+                groupValue: _selectedPaymentMethod,
+                onChanged: (value) {
+                  if (value != null) {
+                    setState(() => _selectedPaymentMethod = value);
+                  }
+                },
+              ),
+              RadioListTile<String>(
+                title: Text(
+                  'Debit Card',
+                  style: TextStyle(color: cs.onSurface),
                 ),
-                RadioListTile<String>(
-                  title: Text(
-                    'Debit Card',
-                    style: TextStyle(color: cs.onSurface),
+                subtitle: Text(
+                  'Visa, Mastercard',
+                  style: TextStyle(
+                    color: cs.onSurface.withValues(alpha: 0.55),
                   ),
-                  subtitle: Text(
-                    'Visa, Mastercard',
-                    style: TextStyle(
-                      color: cs.onSurface.withValues(alpha: 0.55),
-                    ),
-                  ),
-                  value: 'Debit Card',
                 ),
-                RadioListTile<String>(
-                  title: Text('PayPal', style: TextStyle(color: cs.onSurface)),
-                  subtitle: Text(
-                    'Pay with PayPal account',
-                    style: TextStyle(
-                      color: cs.onSurface.withValues(alpha: 0.55),
-                    ),
+                value: 'Debit Card',
+                groupValue: _selectedPaymentMethod,
+                onChanged: (value) {
+                  if (value != null) {
+                    setState(() => _selectedPaymentMethod = value);
+                  }
+                },
+              ),
+              RadioListTile<String>(
+                title: Text('PayPal', style: TextStyle(color: cs.onSurface)),
+                subtitle: Text(
+                  'Pay with PayPal account',
+                  style: TextStyle(
+                    color: cs.onSurface.withValues(alpha: 0.55),
                   ),
-                  value: 'PayPal',
                 ),
-                RadioListTile<String>(
-                  title: Text(
-                    'Cash on Delivery',
-                    style: TextStyle(color: cs.onSurface),
-                  ),
-                  subtitle: Text(
-                    'Pay when you receive',
-                    style: TextStyle(
-                      color: cs.onSurface.withValues(alpha: 0.55),
-                    ),
-                  ),
-                  value: 'Cash on Delivery',
+                value: 'PayPal',
+                groupValue: _selectedPaymentMethod,
+                onChanged: (value) {
+                  if (value != null) {
+                    setState(() => _selectedPaymentMethod = value);
+                  }
+                },
+              ),
+              RadioListTile<String>(
+                title: Text(
+                  'Cash on Delivery',
+                  style: TextStyle(color: cs.onSurface),
                 ),
-                const SizedBox(height: 8),
-              ],
-            ),
+                subtitle: Text(
+                  'Pay when you receive',
+                  style: TextStyle(
+                    color: cs.onSurface.withValues(alpha: 0.55),
+                  ),
+                ),
+                value: 'Cash on Delivery',
+                groupValue: _selectedPaymentMethod,
+                onChanged: (value) {
+                  if (value != null) {
+                    setState(() => _selectedPaymentMethod = value);
+                  }
+                },
+              ),
+              const SizedBox(height: 8),
+            ],
           ),
         ),
       ),

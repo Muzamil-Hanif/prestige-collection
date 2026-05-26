@@ -31,7 +31,7 @@ class _MyCartState extends State<MyCart> {
   double get _totalPrice {
     return widget.cartItems.fold(
       0.0,
-      (sum, item) => sum + (item['price'] as double) * (item['quantity'] as int),
+      (sum, item) => sum + ((item['price'] as double?) ?? 0.0) * (item['quantity'] as int),
     );
   }
 
