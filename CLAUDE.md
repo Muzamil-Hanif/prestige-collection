@@ -9,10 +9,14 @@ flutter pub get                          # Install dependencies
 flutter run -d chrome                    # Run on Chrome
 flutter run -d macos                     # Run on macOS desktop
 flutter run -d ios                       # Run on iOS simulator/device
-flutter run --dart-define=API_BASE_URL=http://<IP>:3000  # Physical device
+flutter run --dart-define=API_BASE_URL=http://<IP>:3000  # Physical device (dev)
 flutter test                             # Run all tests
 flutter build apk                        # Build Android APK
 flutter build ios                        # Build iOS
+
+# Production builds with security enforcement
+flutter run --dart-define=API_BASE_URL=https://api.prestige-men.com \
+            --dart-define=IS_PRODUCTION=true
 ```
 
 Run a single test file:
@@ -26,7 +30,35 @@ flutter test test/widget_test.dart
 No external state management packages. State is owned at the `MainScreen` level in `main.dart` and passed down via callbacks. Key shared state:
 
 - **Cart**: `_cartItems: List<Map<String, dynamic>>` in `MainScreen`, passed to child pages via `onAddToCart` / `onRemoveFromCart` / `onUpdateQuantity` callbacks. Persisted to `SharedPreferences` and synced to the backend asynchronously.
-- **Auth**: JWT token stored in `SharedPreferences` via `StorageService`. Fetched per API call by `ApiService._getHeaders()`.
+- **Auth**: JWT token stored encrypted via `flutter_secure_storage` (Android Keystore, iOS Keychain). Fetched per API call by `ApiService._getHeaders()` and validated for expiration.
+
+### Authentication & Security
+
+**Token Storage (Encrypted):**
+- Tokens stored via `flutter_secure_storage` instead of SharedPreferences
+- Platform-native encryption: Android Keystore, iOS Keychain
+- `StorageService` handles all secure storage operations
+
+**Token Validation:**
+- JWT tokens validated before every API request using `jwt_decoder`
+- Token expiration checked via `_isTokenValid()` in `ApiService`
+- Expired tokens automatically trigger session cleanup and forced re-login
+- Token expiry timestamp extracted from JWT claims during login
+
+**HTTPS Enforcement:**
+- Production builds enforce HTTPS-only URLs via `IS_PRODUCTION` flag
+- `ApiService._validateUrl()` prevents HTTP in production
+- All sensitive operations (auth, payments, profile) validate URL scheme
+
+**Logout & Session Management:**
+- `ApiService.logout()` notifies backend and clears all local credentials
+- `StorageService.clearAll()` removes: token, refresh token, expiry, user data
+- Graceful error handling if backend is unreachable
+
+**Configuration:**
+- `ApiConfig.isProduction` determines security enforcement level
+- `ApiService.setProduction()` initialized in `main.dart` based on `ApiConfig`
+- Development: HTTP allowed, Production: HTTPS required
 
 ### Navigation
 Manual `Navigator.push/pushReplacement` — no named routes. `SplashScreen` is the entry gate: it checks `StorageService.isLoggedIn()` and routes to either `SignInPage` or `MainScreen`. `MainScreen` wraps all post-auth screens with a bottom navigation bar (Home, Products, Cart, Profile tabs).
@@ -48,6 +80,36 @@ Categories are integers matching the backend: `0=All, 1=Perfumes, 2=Watches, 3=W
 ### Profile & Image Upload
 `MyProfilePage` uses `ImagePicker` + `http.MultipartRequest` to upload profile photos to `PATCH /users/profile`. The profile is fetched on `HomePage` init and used to populate the drawer greeting.
 
+## Backend Integration Requirements
+
+### Logout Endpoint (CRITICAL)
+The app now calls `POST /api/auth/logout` when user logs out. Add to `prestige-men-backend`:
+
+```typescript
+// In auth.controller.ts
+@Post('logout')
+@UseGuards(JwtAuthGuard)
+logout(@Req() req: Request) {
+  // Optional: Invalidate token in Redis blacklist
+  // Optional: Clear session from database
+  return { message: 'Logged out successfully' };
+}
+```
+
+**Error Handling:** App gracefully handles logout failures (always clears local storage).
+
+### Token Expiry Configuration
+Ensure backend JWT tokens have reasonable expiry times:
+- `JWT_EXPIRES_IN=7d` (currently set in `.env`)
+- App automatically detects expiry from JWT `exp` claim
+- Expired tokens trigger forced re-login
+
+### HTTPS Requirement
+For production, backend must be served over HTTPS:
+- Update `CORS_ORIGIN` to match HTTPS origin
+- Certificate must be valid (no self-signed in production)
+- App enforces HTTPS when `IS_PRODUCTION=true`
+
 ## Design System
 
 All UI components must follow the design tokens documented in `design.md`. This ensures visual consistency across features.
@@ -61,6 +123,17 @@ All UI components must follow the design tokens documented in `design.md`. This 
 
 See `design.md` for complete palette, component styles, and usage examples.
 
+## Key Dependencies
+
+| Package | Purpose | Security |
+|---------|---------|----------|
+| `http` | HTTP client for API calls | ✓ Used with token validation |
+| `shared_preferences` | Persistent local storage | ⚠️ Only for non-sensitive data (cart) |
+| `flutter_secure_storage` | Encrypted token storage | ✅ Tokens, refresh tokens, expiry |
+| `jwt_decoder` | JWT validation and decoding | ✅ Token signature and expiry checks |
+| `flutter_svg` | SVG asset rendering | — |
+| `image_picker` | Profile photo upload | ✓ Used with multipart requests |
+
 ## Key Patterns
 
 - **Cart Badge**: Bottom nav cart icon count updates reactively from `MainScreen._cartItems.length`.
@@ -68,3 +141,5 @@ See `design.md` for complete palette, component styles, and usage examples.
 - **Banner Auto-Scroll**: `HomePage` cycles promo banners with a `PageController` + `Timer`.
 - **No loading dialogs**: All async feedback is delivered via `SnackBar`, not modal dialogs.
 - **Image normalization**: `ApiService` strips Google Images wrapper URLs to extract direct image URLs from product data.
+- **Token Validation**: Every API request validates token expiration before attaching to headers.
+- **HTTPS Enforcement**: Production builds enforce HTTPS via `IS_PRODUCTION` flag.

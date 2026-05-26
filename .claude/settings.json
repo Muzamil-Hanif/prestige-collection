@@ -18,20 +18,21 @@
   "env": {
     "FLUTTER_CHANNEL": "stable"
   },
+  "enabledMcpjsonServers": ["mongodb"],
   "hooks": {
     "PreToolUse": [
       {
         "matcher": "Bash",
         "hooks": [
           {
-            "type": "prompt",
-            "prompt": "User is running a git commit. Before they proceed, ask: 'Before committing, have you updated CLAUDE.md to reflect your changes? Check: new commands, dependencies, patterns, or architecture updates.' If they confirm, respond with {\"ok\": true}. If unsure, respond with {\"ok\": false, \"reason\": \"User should update CLAUDE.md first\"}.",
+            "type": "command",
+            "command": "find . -maxdepth 1 -type f -name '*.md' ! -name 'README.md' ! -name 'CLAUDE.md' ! -name 'GETTING_STARTED.md' ! -name 'design.md' 2>/dev/null | while read f; do echo \"Found non-critical markdown file: $(basename $f)\"; done | if grep -q .; then echo '{\"systemMessage\": \"📋 Non-critical .md files detected in root directory.\\n\\nConsider moving to docs/ folder to keep root clean. These files should live in docs/:—— GITHUB_SETUP.md, MONGODB_VIEWING_GUIDE.md, etc.\\n\\nManage markdown files:\"}'; fi",
             "if": "Bash(git commit*)"
           },
           {
             "type": "prompt",
-            "prompt": "User is starting Flutter app with 'flutter run'. Ask: 'Is your NestJS backend running? Run /check-api to verify backend health before proceeding.' Respond with {\"ok\": true} when ready.",
-            "if": "Bash(flutter run*)"
+            "prompt": "User is running a git commit. Before they proceed, ask: 'Before committing, have you updated CLAUDE.md to reflect your changes? Check: new commands, dependencies, patterns, or architecture updates.' If they confirm, respond with {\"ok\": true}. If unsure, respond with {\"ok\": false, \"reason\": \"User should update CLAUDE.md first\"}.",
+            "if": "Bash(git commit*)"
           }
         ]
       }

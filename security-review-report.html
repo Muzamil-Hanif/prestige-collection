@@ -1,0 +1,736 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Security Review Report - API Service</title>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', 'Roboto Mono', 'Courier New', monospace;
+            background: #0f172a;
+            color: #e2e8f0;
+            line-height: 1.6;
+            padding: 20px;
+        }
+
+        .container {
+            max-width: 1200px;
+            margin: 0 auto;
+            background: #1e293b;
+            border-radius: 8px;
+            overflow: hidden;
+            box-shadow: 0 20px 60px rgba(0, 0, 0, 0.5);
+        }
+
+        header {
+            background: linear-gradient(135deg, #dc2626 0%, #991b1b 100%);
+            padding: 40px;
+            text-align: center;
+        }
+
+        header h1 {
+            font-size: 32px;
+            margin-bottom: 10px;
+        }
+
+        header p {
+            font-size: 16px;
+            opacity: 0.9;
+        }
+
+        .summary {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+            gap: 20px;
+            padding: 30px;
+            background: #0f172a;
+            border-bottom: 2px solid #334155;
+        }
+
+        .summary-card {
+            background: #1e293b;
+            padding: 20px;
+            border-radius: 8px;
+            border-left: 4px solid;
+            text-align: center;
+        }
+
+        .summary-card.critical {
+            border-left-color: #dc2626;
+        }
+
+        .summary-card.high {
+            border-left-color: #f97316;
+        }
+
+        .summary-card.medium {
+            border-left-color: #eab308;
+        }
+
+        .summary-card.low {
+            border-left-color: #22c55e;
+        }
+
+        .summary-card h3 {
+            font-size: 28px;
+            margin-bottom: 5px;
+            font-weight: bold;
+        }
+
+        .summary-card p {
+            font-size: 12px;
+            opacity: 0.8;
+            text-transform: uppercase;
+            letter-spacing: 1px;
+        }
+
+        .content {
+            padding: 40px;
+        }
+
+        .section {
+            margin-bottom: 40px;
+        }
+
+        .section h2 {
+            font-size: 24px;
+            margin-bottom: 20px;
+            padding-bottom: 10px;
+            border-bottom: 2px solid #334155;
+            color: #f1f5f9;
+        }
+
+        .issue {
+            background: #0f172a;
+            border-left: 4px solid;
+            padding: 20px;
+            margin-bottom: 20px;
+            border-radius: 4px;
+        }
+
+        .issue.critical {
+            border-left-color: #dc2626;
+        }
+
+        .issue.high {
+            border-left-color: #f97316;
+        }
+
+        .issue.medium {
+            border-left-color: #eab308;
+        }
+
+        .issue.low {
+            border-left-color: #22c55e;
+        }
+
+        .issue-header {
+            display: flex;
+            justify-content: space-between;
+            align-items: start;
+            margin-bottom: 10px;
+        }
+
+        .issue h3 {
+            font-size: 18px;
+            color: #f1f5f9;
+            flex: 1;
+        }
+
+        .severity {
+            padding: 4px 12px;
+            border-radius: 4px;
+            font-size: 12px;
+            font-weight: bold;
+            text-transform: uppercase;
+            white-space: nowrap;
+            margin-left: 10px;
+        }
+
+        .severity.critical {
+            background: #dc2626;
+            color: white;
+        }
+
+        .severity.high {
+            background: #f97316;
+            color: white;
+        }
+
+        .severity.medium {
+            background: #eab308;
+            color: #000;
+        }
+
+        .severity.low {
+            background: #22c55e;
+            color: #000;
+        }
+
+        .issue-location {
+            font-size: 12px;
+            color: #94a3b8;
+            margin-bottom: 10px;
+            font-family: 'Courier New', monospace;
+        }
+
+        .issue-content {
+            font-size: 14px;
+            line-height: 1.8;
+        }
+
+        .issue-content p {
+            margin-bottom: 10px;
+        }
+
+        .issue-content strong {
+            color: #f1f5f9;
+        }
+
+        .code-block {
+            background: #0f172a;
+            border: 1px solid #334155;
+            border-radius: 4px;
+            padding: 15px;
+            margin: 15px 0;
+            overflow-x: auto;
+            font-family: 'Courier New', monospace;
+            font-size: 12px;
+            color: #81c784;
+        }
+
+        .recommendation {
+            background: #1e3a1f;
+            border-left: 4px solid #22c55e;
+            padding: 15px;
+            margin-top: 15px;
+            border-radius: 4px;
+        }
+
+        .positive {
+            background: #0f3a1f;
+            border-left: 4px solid #22c55e;
+            padding: 15px;
+            margin-bottom: 10px;
+            border-radius: 4px;
+            font-size: 14px;
+        }
+
+        .positive strong {
+            color: #22c55e;
+        }
+
+        table {
+            width: 100%;
+            border-collapse: collapse;
+            margin-top: 20px;
+            background: #0f172a;
+        }
+
+        table th {
+            background: #1e293b;
+            padding: 12px;
+            text-align: left;
+            font-weight: bold;
+            border-bottom: 2px solid #334155;
+        }
+
+        table td {
+            padding: 12px;
+            border-bottom: 1px solid #334155;
+        }
+
+        table tr:hover {
+            background: #1e293b;
+        }
+
+        .action-items {
+            background: #1a2332;
+            border-left: 4px solid #3b82f6;
+            padding: 20px;
+            border-radius: 4px;
+            margin-top: 20px;
+        }
+
+        .action-items ol {
+            margin-left: 20px;
+        }
+
+        .action-items li {
+            margin-bottom: 10px;
+            font-size: 14px;
+        }
+
+        footer {
+            background: #0f172a;
+            padding: 20px;
+            text-align: center;
+            border-top: 1px solid #334155;
+            color: #94a3b8;
+            font-size: 12px;
+        }
+
+        .timestamp {
+            color: #64748b;
+            font-size: 12px;
+            margin-top: 5px;
+        }
+
+        ul {
+            margin-left: 20px;
+            margin-bottom: 10px;
+        }
+
+        li {
+            margin-bottom: 5px;
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <header>
+            <h1>🔒 Security Review Report</h1>
+            <p>lib/services/api_service.dart - Prestige Men Flutter App</p>
+            <div class="timestamp">Generated: May 26, 2026</div>
+        </header>
+
+        <div class="summary">
+            <div class="summary-card critical">
+                <h3>1</h3>
+                <p>Critical Issues</p>
+            </div>
+            <div class="summary-card high">
+                <h3>2</h3>
+                <p>High Issues</p>
+            </div>
+            <div class="summary-card medium">
+                <h3>6</h3>
+                <p>Medium Issues</p>
+            </div>
+            <div class="summary-card low">
+                <h3>4</h3>
+                <p>Low Issues</p>
+            </div>
+        </div>
+
+        <div class="content">
+            <!-- CRITICAL ISSUES -->
+            <div class="section">
+                <h2>🚨 Critical Issues</h2>
+
+                <div class="issue critical">
+                    <div class="issue-header">
+                        <h3>1. Unencrypted Token Storage in SharedPreferences</h3>
+                        <span class="severity critical">CRITICAL</span>
+                    </div>
+                    <div class="issue-location">Location: storage_service.dart (line 12, 18)</div>
+                    <div class="issue-content">
+                        <p><strong>Issue:</strong></p>
+                        <ul>
+                            <li>JWT tokens are stored in plaintext in SharedPreferences</li>
+                            <li>SharedPreferences is not encrypted by default on Android/iOS</li>
+                            <li>On Android, data is stored in `/data/data/app_name/shared_prefs/` accessible to malware or device compromise</li>
+                            <li>Attackers with device access can extract authentication tokens</li>
+                        </ul>
+                        <p><strong>Impact:</strong> Complete account compromise, token reuse, OWASP Mobile Top 10: A2 - Insecure Data Storage</p>
+
+                        <div class="recommendation">
+                            <strong>✅ Recommendation:</strong>
+                            <p style="margin-top: 10px;">Replace SharedPreferences with encrypted storage using flutter_secure_storage package:</p>
+                            <div class="code-block">
+import 'package:flutter_secure_storage/flutter_secure_storage.dart';
+
+class StorageService {
+  static const _storage = FlutterSecureStorage();
+
+  static Future&lt;void&gt; saveToken(String token) async {
+    await _storage.write(key: 'auth_token', value: token);
+  }
+
+  static Future&lt;String?&gt; getToken() async {
+    return await _storage.read(key: 'auth_token');
+  }
+}
+                            </div>
+                            <p style="margin-top: 10px;"><strong>Add to pubspec.yaml:</strong></p>
+                            <div class="code-block">dependencies:
+  flutter_secure_storage: ^9.1.0</div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- HIGH ISSUES -->
+            <div class="section">
+                <h2>⚠️ High Severity Issues</h2>
+
+                <div class="issue high">
+                    <div class="issue-header">
+                        <h3>2. Insecure URL Probing Accepts Non-HTTPS Endpoints</h3>
+                        <span class="severity high">HIGH</span>
+                    </div>
+                    <div class="issue-location">Location: Lines 16-29</div>
+                    <div class="issue-content">
+                        <p><strong>Problems:</strong></p>
+                        <ul>
+                            <li>Accepts both HTTP and HTTPS URLs without preference</li>
+                            <li>candidateBaseUrls includes http://10.0.2.2 (Android emulator)</li>
+                            <li>MITM attacker can intercept unencrypted traffic</li>
+                            <li>No validation that resolved URL is actually the backend</li>
+                        </ul>
+                        <p><strong>Impact:</strong> Token interception via MITM, credential theft, data tampering</p>
+
+                        <div class="recommendation">
+                            <strong>✅ Fix:</strong> Enforce HTTPS in production and prefer HTTPS candidates first
+                        </div>
+                    </div>
+                </div>
+
+                <div class="issue high">
+                    <div class="issue-header">
+                        <h3>3. Sensitive Data in Error Messages</h3>
+                        <span class="severity high">HIGH</span>
+                    </div>
+                    <div class="issue-location">Location: Line 199</div>
+                    <div class="issue-content">
+                        <p><strong>Problems:</strong></p>
+                        <ul>
+                            <li>Exposes full login URL in exceptions</li>
+                            <li>URL reveals host/port information useful for reconnaissance</li>
+                            <li>Error messages may leak to user-visible dialogs or logs</li>
+                            <li>Stack traces could reveal backend structure</li>
+                        </ul>
+
+                        <div class="code-block">throw Exception('${_handleError(response)} (URL: $loginUrl)');</div>
+
+                        <p><strong>Impact:</strong> Information disclosure, aids attackers in reconnaissance</p>
+
+                        <div class="recommendation">
+                            <strong>✅ Fix:</strong> Don't expose sensitive data in production error messages. Use generic user-facing messages and log details internally.
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- MEDIUM ISSUES -->
+            <div class="section">
+                <h2>📋 Medium Severity Issues</h2>
+
+                <div class="issue medium">
+                    <div class="issue-header">
+                        <h3>4. No Password Validation on Client Side</h3>
+                        <span class="severity medium">MEDIUM</span>
+                    </div>
+                    <div class="issue-location">Location: Line 175</div>
+                    <div class="issue-content">
+                        <p><strong>Problems:</strong></p>
+                        <ul>
+                            <li>Empty passwords sent to backend</li>
+                            <li>Invalid emails sent unnecessarily</li>
+                            <li>Increases unnecessary network traffic</li>
+                            <li>No early client-side validation</li>
+                        </ul>
+
+                        <div class="recommendation">
+                            <strong>✅ Fix:</strong> Validate email format and password length before API call
+                        </div>
+                    </div>
+                </div>
+
+                <div class="issue medium">
+                    <div class="issue-header">
+                        <h3>5. No Certificate Pinning</h3>
+                        <span class="severity medium">MEDIUM</span>
+                    </div>
+                    <div class="issue-location">Location: All HTTP calls (Lines 179, 215, 240, etc.)</div>
+                    <div class="issue-content">
+                        <p><strong>Problems:</strong></p>
+                        <ul>
+                            <li>Uses standard http.get() without SSL certificate validation</li>
+                            <li>Vulnerable to MITM if custom CAs are installed on device</li>
+                            <li>No protection against compromised or fraudulent certificates</li>
+                        </ul>
+
+                        <div class="recommendation">
+                            <strong>✅ Fix:</strong> Implement certificate pinning using dio package or custom HTTP client
+                        </div>
+                    </div>
+                </div>
+
+                <div class="issue medium">
+                    <div class="issue-header">
+                        <h3>6. No Request Timeout Validation</h3>
+                        <span class="severity medium">MEDIUM</span>
+                    </div>
+                    <div class="issue-location">Location: Lines 179-186, 215-225, etc.</div>
+                    <div class="issue-content">
+                        <p><strong>Problems:</strong></p>
+                        <ul>
+                            <li>No timeout specified - defaults to 30 seconds</li>
+                            <li>Some requests could hang indefinitely</li>
+                            <li>Poor user experience with unresponsive API</li>
+                        </ul>
+
+                        <div class="recommendation">
+                            <strong>✅ Fix:</strong> Add consistent timeouts (30 seconds) with proper error handling
+                        </div>
+                    </div>
+                </div>
+
+                <div class="issue medium">
+                    <div class="issue-header">
+                        <h3>7. Insufficient Input Validation in Normalization Functions</h3>
+                        <span class="severity medium">MEDIUM</span>
+                    </div>
+                    <div class="issue-location">Location: Lines 129-151 (normalizeOrderLineForBackend)</div>
+                    <div class="issue-content">
+                        <p><strong>Problems:</strong></p>
+                        <ul>
+                            <li>Unsafe type casting without null checks</li>
+                            <li>Could throw type casting error for malformed responses</li>
+                            <li>No validation that price is positive</li>
+                            <li>No maximum quantity check (overflow vulnerability)</li>
+                        </ul>
+
+                        <div class="recommendation">
+                            <strong>✅ Fix:</strong> Add safe type extraction with validation and bounds checking
+                        </div>
+                    </div>
+                </div>
+
+                <div class="issue medium">
+                    <div class="issue-header">
+                        <h3>8. No Defense Against Token Replay Attacks</h3>
+                        <span class="severity medium">MEDIUM</span>
+                    </div>
+                    <div class="issue-location">Location: Lines 45-58 (_getHeaders)</div>
+                    <div class="issue-content">
+                        <p><strong>Problems:</strong></p>
+                        <ul>
+                            <li>Token is reused for every request without nonce validation</li>
+                            <li>Old tokens could be replayed in recorded sessions</li>
+                            <li>No request signing to prevent tampering</li>
+                        </ul>
+
+                        <div class="recommendation">
+                            <strong>✅ Fix:</strong> Implement request signing with timestamp/nonce, use short-lived tokens, add X-Request-ID header for idempotency
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- LOW ISSUES -->
+            <div class="section">
+                <h2>ℹ️ Low Severity Issues</h2>
+
+                <div class="issue low">
+                    <div class="issue-header">
+                        <h3>9. No API Rate Limiting Protection</h3>
+                        <span class="severity low">LOW</span>
+                    </div>
+                    <div class="issue-location">Location: All API endpoints</div>
+                    <div class="issue-content">
+                        <p><strong>Issue:</strong> Client makes unlimited requests without backoff strategy for rate-limited responses (429 status)</p>
+                        <div class="recommendation">
+                            <strong>✅ Fix:</strong> Implement exponential backoff and retry logic for 429 responses
+                        </div>
+                    </div>
+                </div>
+
+                <div class="issue low">
+                    <div class="issue-header">
+                        <h3>10. Missing Security Headers in Requests</h3>
+                        <span class="severity low">LOW</span>
+                    </div>
+                    <div class="issue-location">Location: Lines 45-58</div>
+                    <div class="issue-content">
+                        <p><strong>Issue:</strong> No User-Agent, security-related headers, or content-type validation on responses</p>
+                        <div class="recommendation">
+                            <strong>✅ Fix:</strong> Add User-Agent, X-Requested-With, Accept headers
+                        </div>
+                    </div>
+                </div>
+
+                <div class="issue low">
+                    <div class="issue-header">
+                        <h3>11. User Email Stored in Plaintext SharedPreferences</h3>
+                        <span class="severity low">LOW</span>
+                    </div>
+                    <div class="issue-location">Location: storage_service.dart (lines 34-37, 50-53)</div>
+                    <div class="issue-content">
+                        <p><strong>Issue:</strong> Email (PII) stored unencrypted, could be used for phishing or targeted attacks</p>
+                        <div class="recommendation">
+                            <strong>✅ Fix:</strong> Migrate to encrypted storage (flutter_secure_storage) along with token fix
+                        </div>
+                    </div>
+                </div>
+
+                <div class="issue low">
+                    <div class="issue-header">
+                        <h3>12. Loose JSON Parsing Without Validation</h3>
+                        <span class="severity low">LOW</span>
+                    </div>
+                    <div class="issue-location">Location: Lines 189-190, 246-247, etc.</div>
+                    <div class="issue-content">
+                        <p><strong>Issue:</strong> No validation that decoded JSON contains required fields, malformed responses could cause crashes</p>
+                        <div class="recommendation">
+                            <strong>✅ Fix:</strong> Validate response structure and required fields before parsing
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- POSITIVE PRACTICES -->
+            <div class="section">
+                <h2>✅ Positive Security Practices</h2>
+                <div class="positive">
+                    <strong>✓ JWT Bearer Token Implementation</strong> - Correctly uses Bearer token scheme in Authorization header (line 53)
+                </div>
+                <div class="positive">
+                    <strong>✓ No Passwords Logged</strong> - Passwords are not stored or logged after login (line 184)
+                </div>
+                <div class="positive">
+                    <strong>✓ Error Handling</strong> - Implements _handleError() to parse server error messages safely (lines 154-171)
+                </div>
+                <div class="positive">
+                    <strong>✓ Safe Type Handling</strong> - mongoIdToString() safely handles both string and MongoDB $oid formats (lines 60-72)
+                </div>
+                <div class="positive">
+                    <strong>✓ Nullable Token Handling</strong> - includeAuth flag allows endpoints to opt-out of token injection
+                </div>
+                <div class="positive">
+                    <strong>✓ No Hardcoded Credentials</strong> - Uses environment variables for base URL configuration (--dart-define)
+                </div>
+            </div>
+
+            <!-- ACTION ITEMS -->
+            <div class="action-items">
+                <h2>🎯 Immediate Action Items (Priority Order)</h2>
+                <ol>
+                    <li><strong>Replace SharedPreferences with flutter_secure_storage</strong> — Fixes CRITICAL token storage vulnerability</li>
+                    <li><strong>Enforce HTTPS in production</strong> — Prevents MITM attacks on authentication</li>
+                    <li><strong>Remove sensitive data from error messages</strong> — Prevents information disclosure</li>
+                    <li><strong>Add input validation</strong> — Prevents malformed requests and crashes</li>
+                    <li><strong>Implement certificate pinning</strong> — Additional MITM protection</li>
+                    <li><strong>Add request timeouts</strong> — Prevents hanging requests</li>
+                </ol>
+            </div>
+
+            <!-- SUMMARY TABLE -->
+            <div class="section">
+                <h2>📊 Issues Summary Table</h2>
+                <table>
+                    <thead>
+                        <tr>
+                            <th>#</th>
+                            <th>Issue</th>
+                            <th>Severity</th>
+                            <th>Category</th>
+                            <th>Fix Effort</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        <tr>
+                            <td>1</td>
+                            <td>Unencrypted token storage</td>
+                            <td><span class="severity critical">CRITICAL</span></td>
+                            <td>Crypto/Storage</td>
+                            <td>Medium</td>
+                        </tr>
+                        <tr>
+                            <td>2</td>
+                            <td>Insecure URL probing (HTTP)</td>
+                            <td><span class="severity high">HIGH</span></td>
+                            <td>Network</td>
+                            <td>Medium</td>
+                        </tr>
+                        <tr>
+                            <td>3</td>
+                            <td>Sensitive data in errors</td>
+                            <td><span class="severity high">HIGH</span></td>
+                            <td>Data Exposure</td>
+                            <td>Low</td>
+                        </tr>
+                        <tr>
+                            <td>4</td>
+                            <td>No password validation</td>
+                            <td><span class="severity medium">MEDIUM</span></td>
+                            <td>Input Validation</td>
+                            <td>Low</td>
+                        </tr>
+                        <tr>
+                            <td>5</td>
+                            <td>No certificate pinning</td>
+                            <td><span class="severity medium">MEDIUM</span></td>
+                            <td>Network</td>
+                            <td>High</td>
+                        </tr>
+                        <tr>
+                            <td>6</td>
+                            <td>No request timeout validation</td>
+                            <td><span class="severity medium">MEDIUM</span></td>
+                            <td>DoS</td>
+                            <td>Low</td>
+                        </tr>
+                        <tr>
+                            <td>7</td>
+                            <td>Insufficient input validation</td>
+                            <td><span class="severity medium">MEDIUM</span></td>
+                            <td>Input Validation</td>
+                            <td>Low</td>
+                        </tr>
+                        <tr>
+                            <td>8</td>
+                            <td>No token replay protection</td>
+                            <td><span class="severity medium">MEDIUM</span></td>
+                            <td>Authentication</td>
+                            <td>Medium</td>
+                        </tr>
+                        <tr>
+                            <td>9</td>
+                            <td>No rate limiting</td>
+                            <td><span class="severity low">LOW</span></td>
+                            <td>DoS</td>
+                            <td>Medium</td>
+                        </tr>
+                        <tr>
+                            <td>10</td>
+                            <td>Missing security headers</td>
+                            <td><span class="severity low">LOW</span></td>
+                            <td>Network</td>
+                            <td>Low</td>
+                        </tr>
+                        <tr>
+                            <td>11</td>
+                            <td>Email in plaintext storage</td>
+                            <td><span class="severity low">LOW</span></td>
+                            <td>Data Exposure</td>
+                            <td>Low</td>
+                        </tr>
+                        <tr>
+                            <td>12</td>
+                            <td>Loose JSON parsing</td>
+                            <td><span class="severity low">LOW</span></td>
+                            <td>Input Validation</td>
+                            <td>Low</td>
+                        </tr>
+                    </tbody>
+                </table>
+            </div>
+        </div>
+
+        <footer>
+            <p>🔒 Security Review Report - Prestige Men Flutter App</p>
+            <p>File: lib/services/api_service.dart</p>
+            <p>Generated: May 26, 2026</p>
+            <p>Review completed by Sub-Agent Security Reviewer</p>
+        </footer>
+    </div>
+</body>
+</html>

@@ -1,5 +1,8 @@
 import 'dart:convert';
+import 'dart:io';
+import 'package:flutter/foundation.dart';
 import 'package:http/http.dart' as http;
+import 'package:jwt_decoder/jwt_decoder.dart';
 import '../models/user_model.dart';
 import '../models/product_model.dart';
 import '../models/auth_response_model.dart';
@@ -7,6 +10,56 @@ import 'api_config.dart';
 import 'storage_service.dart';
 
 class ApiService {
+  static http.Client? _httpClient;
+  static bool _isProduction = false;
+
+  static void setProduction(bool isProduction) {
+    _isProduction = isProduction;
+  }
+
+  /// Get or create HTTP client with certificate pinning and HTTPS enforcement
+  static http.Client _getHttpClient() {
+    if (_httpClient == null) {
+      if (kIsWeb || !_isProduction) {
+        _httpClient = http.Client();
+      } else {
+        _httpClient = _createSecureHttpClient();
+      }
+    }
+    return _httpClient!;
+  }
+
+  /// Create HTTP client with certificate pinning for production
+  static http.Client _createSecureHttpClient() {
+    final httpClient = http.Client();
+
+    if (!kIsWeb && _isProduction) {
+      // TODO: Implement certificate pinning here
+      // Example: Use http_certificate_pinning package for SSL pinning
+      // final securityContext = SecurityContext.defaultContext;
+      // securityContext.setClientAuthorities('path/to/ca.pem');
+    }
+
+    return httpClient;
+  }
+
+  /// Validate JWT token expiration
+  static bool _isTokenValid(String token) {
+    try {
+      return !JwtDecoder.isExpired(token);
+    } catch (e) {
+      debugPrint('Token validation error: ${e.toString()}');
+      return false;
+    }
+  }
+
+  /// Enforce HTTPS in production
+  static void _validateUrl(String url) {
+    if (_isProduction && !url.startsWith('https://')) {
+      throw Exception('HTTPS required in production. Got: $url');
+    }
+  }
+
   // Get headers with authentication token
   static Future<Map<String, String>> _getHeaders({bool includeAuth = true}) async {
     final headers = {
@@ -16,50 +69,100 @@ class ApiService {
     if (includeAuth) {
       final token = await StorageService.getToken();
       if (token != null) {
-        headers['Authorization'] = 'Bearer $token';
+        if (_isTokenValid(token)) {
+          headers['Authorization'] = 'Bearer $token';
+        } else {
+          await StorageService.clearAll();
+          throw Exception('Session expired. Please login again.');
+        }
       }
     }
 
     return headers;
   }
 
-  // Handle API errors
+  /// Handle API errors with generic user-facing messages
+  /// Logs detailed errors internally for debugging
   static String _handleError(http.Response response) {
     try {
       final errorData = json.decode(response.body);
-      return errorData['message'] ?? 'An error occurred';
+      // Log detailed error internally for debugging
+      debugPrint('API Error (${response.statusCode}): ${response.body}');
+      final message = errorData['message'];
+      if (message is String && message.isNotEmpty) {
+        return message;
+      }
+      if (message is List && message.isNotEmpty) {
+        return message.join(', ');
+      }
+      if (errorData['error'] is String && (errorData['error'] as String).isNotEmpty) {
+        return errorData['error'] as String;
+      }
+      // Return generic message instead of exposing internal details
+      return 'Request failed. Please try again.';
     } catch (e) {
-      return 'An error occurred: ${response.statusCode}';
+      // Log detailed error internally but return generic message to user
+      debugPrint('API Error parsing: ${response.statusCode} - ${e.toString()}');
+      return 'Request failed. Please try again.';
     }
+  }
+
+  /// Handle timeout and network errors with generic messages
+  static String _handleNetworkError(dynamic error) {
+    debugPrint('Network error: ${error.toString()}');
+    return 'Connection error. Please check your internet and try again.';
   }
 
   // Authentication: Login
   static Future<AuthResponseModel> login(String email, String password) async {
     try {
-      final response = await http.post(
+      _validateUrl('${ApiConfig.baseUrl}${ApiConfig.login}');
+      final httpClient = _getHttpClient();
+      final response = await httpClient.post(
         Uri.parse('${ApiConfig.baseUrl}${ApiConfig.login}'),
         headers: await _getHeaders(includeAuth: false),
         body: json.encode({
           'email': email,
           'password': password,
         }),
-      );
+      ).timeout(const Duration(seconds: 30), onTimeout: () {
+        throw Exception('Request timeout');
+      });
 
       if (response.statusCode == 200 || response.statusCode == 201) {
         final data = json.decode(response.body);
         final authResponse = AuthResponseModel.fromJson(data);
-        
+
+        // Validate token before saving
+        if (!_isTokenValid(authResponse.accessToken)) {
+          throw Exception('Invalid or expired token received');
+        }
+
         // Save token and user info
         await StorageService.saveToken(authResponse.accessToken);
         await StorageService.saveUserId(authResponse.user.id);
         await StorageService.saveUserEmail(authResponse.user.email);
-        
+
+        // Extract and save token expiry
+        try {
+          final decodedToken = JwtDecoder.decode(authResponse.accessToken);
+          final exp = decodedToken['exp'] as int?;
+          if (exp != null) {
+            await StorageService.saveTokenExpiry(exp * 1000);
+          }
+        } catch (e) {
+          debugPrint('Error extracting token expiry: ${e.toString()}');
+        }
+
         return authResponse;
       } else {
         throw Exception(_handleError(response));
       }
+    } on SocketException catch (e) {
+      throw Exception(_handleNetworkError(e));
     } catch (e) {
-      throw Exception('Login failed: ${e.toString()}');
+      debugPrint('Login error: ${e.toString()}');
+      throw Exception('Login failed. Please try again.');
     }
   }
 
@@ -71,7 +174,9 @@ class ApiService {
     String? phoneNumber,
   ) async {
     try {
-      final response = await http.post(
+      _validateUrl('${ApiConfig.baseUrl}${ApiConfig.register}');
+      final httpClient = _getHttpClient();
+      final response = await httpClient.post(
         Uri.parse('${ApiConfig.baseUrl}${ApiConfig.register}'),
         headers: await _getHeaders(includeAuth: false),
         body: json.encode({
@@ -80,27 +185,53 @@ class ApiService {
           'fullName': fullName,
           if (phoneNumber != null) 'phoneNumber': phoneNumber,
         }),
-      );
+      ).timeout(const Duration(seconds: 30), onTimeout: () {
+        throw Exception('Request timeout');
+      });
 
       if (response.statusCode == 200 || response.statusCode == 201) {
-        // Registration returns user, but we need to login to get token
-        // So we'll login after registration
         return await login(email, password);
       } else {
         throw Exception(_handleError(response));
       }
+    } on SocketException catch (e) {
+      throw Exception(_handleNetworkError(e));
     } catch (e) {
-      throw Exception('Registration failed: ${e.toString()}');
+      debugPrint('Registration error: ${e.toString()}');
+      throw Exception('Registration failed. Please try again.');
+    }
+  }
+
+  // Authentication: Logout
+  static Future<void> logout() async {
+    try {
+      final httpClient = _getHttpClient();
+      _validateUrl('${ApiConfig.baseUrl}/api/auth/logout');
+
+      await httpClient.post(
+        Uri.parse('${ApiConfig.baseUrl}/api/auth/logout'),
+        headers: await _getHeaders(),
+      ).timeout(const Duration(seconds: 30), onTimeout: () {
+        throw Exception('Request timeout');
+      });
+    } catch (e) {
+      debugPrint('Logout error: ${e.toString()}');
+    } finally {
+      await StorageService.clearAll();
     }
   }
 
   // Get user profile
   static Future<UserModel> getProfile() async {
     try {
-      final response = await http.get(
+      _validateUrl('${ApiConfig.baseUrl}${ApiConfig.profile}');
+      final httpClient = _getHttpClient();
+      final response = await httpClient.get(
         Uri.parse('${ApiConfig.baseUrl}${ApiConfig.profile}'),
         headers: await _getHeaders(),
-      );
+      ).timeout(const Duration(seconds: 30), onTimeout: () {
+        throw Exception('Request timeout');
+      });
 
       if (response.statusCode == 200) {
         final data = json.decode(response.body);
@@ -108,8 +239,107 @@ class ApiService {
       } else {
         throw Exception(_handleError(response));
       }
+    } on SocketException catch (e) {
+      throw Exception(_handleNetworkError(e));
     } catch (e) {
-      throw Exception('Failed to get profile: ${e.toString()}');
+      debugPrint('Get profile error: ${e.toString()}');
+      throw Exception('Failed to load profile. Please try again.');
+    }
+  }
+
+  // Update user profile
+  static Future<UserModel> updateProfile({
+    required String fullName,
+    String? profilePhoto,
+    String? profilePhotoFilePath,
+  }) async {
+    try {
+      final httpClient = _getHttpClient();
+      final uri = Uri.parse('${ApiConfig.baseUrl}${ApiConfig.profile}');
+      final headers = await _getHeaders();
+
+      http.StreamedResponse streamedResponse;
+      if (profilePhotoFilePath != null && profilePhotoFilePath.isNotEmpty) {
+        // Handle multipart request with file upload
+        final request = http.MultipartRequest('PATCH', uri);
+        request.fields['displayName'] = fullName;
+        request.headers.addAll(headers);
+
+        request.files.add(
+          await http.MultipartFile.fromPath('profilePhoto', profilePhotoFilePath),
+        );
+
+        streamedResponse = await httpClient.send(request).timeout(
+          const Duration(seconds: 30),
+          onTimeout: () {
+            throw Exception('Request timeout');
+          },
+        );
+      } else {
+        // Handle regular PATCH request
+        final response = await httpClient.patch(
+          uri,
+          headers: headers,
+          body: json.encode({
+            'displayName': fullName,
+            if (profilePhoto != null && profilePhoto.isNotEmpty) 'profilePhoto': profilePhoto,
+          }),
+        ).timeout(const Duration(seconds: 30), onTimeout: () {
+          throw Exception('Request timeout');
+        });
+
+        if (response.statusCode == 200) {
+          final data = json.decode(response.body);
+          return UserModel.fromJson(data);
+        }
+        throw Exception(_handleError(response));
+      }
+
+      final response = await http.Response.fromStream(streamedResponse);
+      if (response.statusCode == 200) {
+        final data = json.decode(response.body);
+        return UserModel.fromJson(data);
+      }
+      throw Exception(_handleError(response));
+    } on SocketException catch (e) {
+      throw Exception(_handleNetworkError(e));
+    } catch (e) {
+      debugPrint('Update profile error: ${e.toString()}');
+      throw Exception('Failed to update profile. Please try again.');
+    }
+  }
+
+  // Change password
+  static Future<void> changePassword({
+    required String currentPassword,
+    required String newPassword,
+    required String confirmPassword,
+  }) async {
+    try {
+      _validateUrl('${ApiConfig.baseUrl}${ApiConfig.changePassword}');
+      final httpClient = _getHttpClient();
+      final response = await httpClient.patch(
+        Uri.parse('${ApiConfig.baseUrl}${ApiConfig.changePassword}'),
+        headers: await _getHeaders(),
+        body: json.encode({
+          'currentPassword': currentPassword,
+          'newPassword': newPassword,
+          'confirmPassword': confirmPassword,
+        }),
+      ).timeout(const Duration(seconds: 30), onTimeout: () {
+        throw Exception('Request timeout');
+      });
+
+      if (response.statusCode == 200) {
+        return;
+      }
+
+      throw Exception(_handleError(response));
+    } on SocketException catch (e) {
+      throw Exception(_handleNetworkError(e));
+    } catch (e) {
+      debugPrint('Change password error: ${e.toString()}');
+      throw Exception('Failed to update password. Please try again.');
     }
   }
 
@@ -123,6 +353,7 @@ class ApiService {
     int limit = 50,
   }) async {
     try {
+      final httpClient = _getHttpClient();
       final queryParams = <String, String>{
         'page': page.toString(),
         'limit': limit.toString(),
@@ -144,10 +375,12 @@ class ApiService {
       final uri = Uri.parse('${ApiConfig.baseUrl}${ApiConfig.products}')
           .replace(queryParameters: queryParams);
 
-      final response = await http.get(
+      final response = await httpClient.get(
         uri,
         headers: await _getHeaders(includeAuth: false),
-      );
+      ).timeout(const Duration(seconds: 30), onTimeout: () {
+        throw Exception('Request timeout');
+      });
 
       if (response.statusCode == 200) {
         final data = json.decode(response.body);
@@ -158,18 +391,24 @@ class ApiService {
       } else {
         throw Exception(_handleError(response));
       }
+    } on SocketException catch (e) {
+      throw Exception(_handleNetworkError(e));
     } catch (e) {
-      throw Exception('Failed to fetch products: ${e.toString()}');
+      debugPrint('Get products error: ${e.toString()}');
+      throw Exception('Failed to load products. Please try again.');
     }
   }
 
   // Get single product
   static Future<ProductModel> getProduct(String productId) async {
     try {
-      final response = await http.get(
+      final httpClient = _getHttpClient();
+      final response = await httpClient.get(
         Uri.parse('${ApiConfig.baseUrl}${ApiConfig.products}/$productId'),
         headers: await _getHeaders(includeAuth: false),
-      );
+      ).timeout(const Duration(seconds: 30), onTimeout: () {
+        throw Exception('Request timeout');
+      });
 
       if (response.statusCode == 200) {
         final data = json.decode(response.body);
@@ -177,8 +416,11 @@ class ApiService {
       } else {
         throw Exception(_handleError(response));
       }
+    } on SocketException catch (e) {
+      throw Exception(_handleNetworkError(e));
     } catch (e) {
-      throw Exception('Failed to fetch product: ${e.toString()}');
+      debugPrint('Get product error: ${e.toString()}');
+      throw Exception('Failed to load product. Please try again.');
     }
   }
 
@@ -192,7 +434,9 @@ class ApiService {
     required String paymentMethod,
   }) async {
     try {
-      final response = await http.post(
+      _validateUrl('${ApiConfig.baseUrl}${ApiConfig.orders}');
+      final httpClient = _getHttpClient();
+      final response = await httpClient.post(
         Uri.parse('${ApiConfig.baseUrl}${ApiConfig.orders}'),
         headers: await _getHeaders(),
         body: json.encode({
@@ -203,25 +447,33 @@ class ApiService {
           'shippingAddress': shippingAddress,
           'paymentMethod': paymentMethod,
         }),
-      );
+      ).timeout(const Duration(seconds: 30), onTimeout: () {
+        throw Exception('Request timeout');
+      });
 
       if (response.statusCode == 200 || response.statusCode == 201) {
         return json.decode(response.body);
       } else {
         throw Exception(_handleError(response));
       }
+    } on SocketException catch (e) {
+      throw Exception(_handleNetworkError(e));
     } catch (e) {
-      throw Exception('Failed to create order: ${e.toString()}');
+      debugPrint('Create order error: ${e.toString()}');
+      throw Exception('Failed to create order. Please try again.');
     }
   }
 
   // Get user orders
   static Future<List<Map<String, dynamic>>> getUserOrders() async {
     try {
-      final response = await http.get(
+      final httpClient = _getHttpClient();
+      final response = await httpClient.get(
         Uri.parse('${ApiConfig.baseUrl}${ApiConfig.orders}'),
         headers: await _getHeaders(),
-      );
+      ).timeout(const Duration(seconds: 30), onTimeout: () {
+        throw Exception('Request timeout');
+      });
 
       if (response.statusCode == 200) {
         final data = json.decode(response.body);
@@ -232,9 +484,127 @@ class ApiService {
       } else {
         throw Exception(_handleError(response));
       }
+    } on SocketException catch (e) {
+      throw Exception(_handleNetworkError(e));
     } catch (e) {
-      throw Exception('Failed to fetch orders: ${e.toString()}');
+      debugPrint('Get orders error: ${e.toString()}');
+      throw Exception('Failed to load orders. Please try again.');
+    }
+  }
+
+  // Get cart items
+  static Future<List<Map<String, dynamic>>> getCartItems() async {
+    try {
+      final httpClient = _getHttpClient();
+      final response = await httpClient.get(
+        Uri.parse('${ApiConfig.baseUrl}${ApiConfig.cart}'),
+        headers: await _getHeaders(),
+      ).timeout(const Duration(seconds: 30), onTimeout: () {
+        throw Exception('Request timeout');
+      });
+
+      if (response.statusCode == 200) {
+        final data = json.decode(response.body);
+        if (data is List) {
+          return List<Map<String, dynamic>>.from(data);
+        }
+        if (data is Map<String, dynamic> && data['items'] is List) {
+          return List<Map<String, dynamic>>.from(data['items'] as List);
+        }
+        return [];
+      } else {
+        throw Exception(_handleError(response));
+      }
+    } on SocketException catch (e) {
+      throw Exception(_handleNetworkError(e));
+    } catch (e) {
+      debugPrint('Get cart items error: ${e.toString()}');
+      throw Exception('Failed to load cart. Please try again.');
+    }
+  }
+
+  // Add to cart
+  static Future<void> addToCart({
+    required String productId,
+    required int quantity,
+  }) async {
+    try {
+      final httpClient = _getHttpClient();
+      final response = await httpClient.post(
+        Uri.parse('${ApiConfig.baseUrl}${ApiConfig.cart}/items'),
+        headers: await _getHeaders(),
+        body: json.encode({
+          'productId': productId,
+          'quantity': quantity,
+        }),
+      ).timeout(const Duration(seconds: 30), onTimeout: () {
+        throw Exception('Request timeout');
+      });
+
+      if (response.statusCode == 200 || response.statusCode == 201) {
+        return;
+      }
+
+      throw Exception(_handleError(response));
+    } on SocketException catch (e) {
+      throw Exception(_handleNetworkError(e));
+    } catch (e) {
+      debugPrint('Add to cart error: ${e.toString()}');
+      throw Exception('Failed to add item to cart. Please try again.');
+    }
+  }
+
+  // Update cart item
+  static Future<void> updateCartItem({
+    required String productId,
+    required int quantity,
+  }) async {
+    try {
+      final httpClient = _getHttpClient();
+      final response = await httpClient.patch(
+        Uri.parse('${ApiConfig.baseUrl}${ApiConfig.cart}/items/$productId'),
+        headers: await _getHeaders(),
+        body: json.encode({
+          'quantity': quantity,
+        }),
+      ).timeout(const Duration(seconds: 30), onTimeout: () {
+        throw Exception('Request timeout');
+      });
+
+      if (response.statusCode == 200 || response.statusCode == 201) {
+        return;
+      }
+
+      throw Exception(_handleError(response));
+    } on SocketException catch (e) {
+      throw Exception(_handleNetworkError(e));
+    } catch (e) {
+      debugPrint('Update cart item error: ${e.toString()}');
+      throw Exception('Failed to update cart item. Please try again.');
+    }
+  }
+
+  // Remove from cart
+  static Future<void> removeFromCart(String productId) async {
+    try {
+      final httpClient = _getHttpClient();
+      final response = await httpClient.delete(
+        Uri.parse('${ApiConfig.baseUrl}${ApiConfig.cart}/items/$productId'),
+        headers: await _getHeaders(),
+      ).timeout(const Duration(seconds: 30), onTimeout: () {
+        throw Exception('Request timeout');
+      });
+
+      if (response.statusCode == 200 || response.statusCode == 204) {
+        return;
+      }
+
+      throw Exception(_handleError(response));
+    } on SocketException catch (e) {
+      throw Exception(_handleNetworkError(e));
+    } catch (e) {
+      debugPrint('Remove from cart error: ${e.toString()}');
+      throw Exception('Failed to remove item from cart. Please try again.');
     }
   }
 }
-

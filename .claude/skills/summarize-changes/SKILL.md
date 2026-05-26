@@ -9,6 +9,7 @@ user-invocable: false
 !`git diff --stat HEAD 2>/dev/null || echo "No git changes"`
 
 Summarise the changes in 2-3 bullets. Flag any:
+
 - Missing error handling in new API calls
 - Hardcoded URLs or credentials
 - Dart files edited without running `dart format`

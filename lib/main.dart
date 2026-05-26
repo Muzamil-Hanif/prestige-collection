@@ -1,17 +1,21 @@
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_svg/flutter_svg.dart';
+import 'dart:convert';
 import 'pages/splash_screen.dart';
 import 'pages/sign_in_page.dart';
-import 'pages/home_page.dart';
+import 'pages/home_page_clean.dart';
 import 'pages/products_page.dart';
 import 'pages/my_cart.dart';
 import 'pages/about_page.dart';
 import 'pages/settings_page.dart';
 import 'pages/contact_page.dart';
 import 'services/storage_service.dart';
+import 'services/api_service.dart';
+import 'services/api_config.dart';
 
 void main() {
+  ApiService.setProduction(ApiConfig.isProduction);
   runApp(const MyApp());
 }
 
@@ -53,6 +57,12 @@ class MyApp extends StatelessWidget {
         colorScheme: colorScheme,
         useMaterial3: true,
         scaffoldBackgroundColor: Color(0xFFF5F5F5),
+        actionIconTheme: ActionIconThemeData(
+          backButtonIconBuilder: (BuildContext context) {
+            final color = IconTheme.of(context).color ?? Colors.black;
+            return Icon(Icons.arrow_back, color: color);
+          },
+        ),
         appBarTheme: const AppBarTheme(
           centerTitle: true,
           elevation: 0,
@@ -60,8 +70,8 @@ class MyApp extends StatelessWidget {
           foregroundColor: Colors.black,
           systemOverlayStyle: SystemUiOverlayStyle(
             statusBarColor: Colors.transparent,
-            statusBarIconBrightness: Brightness.dark, 
-            statusBarBrightness: Brightness.light, 
+            statusBarIconBrightness: Brightness.dark,
+            statusBarBrightness: Brightness.light,
           ),
         ),
         cardColor: colorScheme.surface,
@@ -106,64 +116,180 @@ class _MainScreenState extends State<MainScreen> {
   // Shared cart items state
   final List<Map<String, dynamic>> _cartItems = [];
 
+  int get _cartItemCount {
+    return _cartItems.fold<int>(
+      0,
+      (sum, item) => sum + ((item['quantity'] as int?) ?? 0),
+    );
+  }
+
+  @override
+  void initState() {
+    super.initState();
+    _loadCart();
+  }
+
+  Future<void> _loadCart() async {
+    // 1) local persisted state for instant UI
+    final persisted = await StorageService.getCartItems();
+    if (persisted != null && persisted.isNotEmpty) {
+      try {
+        final decoded = json.decode(persisted) as List<dynamic>;
+        setState(() {
+          _cartItems
+            ..clear()
+            ..addAll(decoded.map((e) => Map<String, dynamic>.from(e as Map)));
+        });
+      } catch (_) {
+        // Ignore invalid cache.
+      }
+    }
+
+    // 2) backend cart sync — only replace local rows when the server returns items.
+    // (An empty server cart must not wipe a valid offline cart.)
+    try {
+      final serverCart = await ApiService.getCartItems();
+      if (serverCart.isNotEmpty) {
+        setState(() {
+          _cartItems
+            ..clear()
+            ..addAll(serverCart);
+        });
+        await _persistCart();
+      }
+    } catch (_) {
+      // Backend cart endpoint may not exist yet; keep local cart.
+    }
+  }
+
+  /// Cart rows may include non-JSON `IconData`; strip before persisting.
+  List<Map<String, dynamic>> _cartItemsJsonSafe() {
+    return _cartItems.map((item) {
+      final copy = Map<String, dynamic>.from(item);
+      copy.remove('icon');
+      return copy;
+    }).toList();
+  }
+
+  Future<void> _persistCart() async {
+    await StorageService.saveCartItems(json.encode(_cartItemsJsonSafe()));
+  }
+
+  void _syncAddToBackend(String productId, int quantity) {
+    if (productId.isEmpty) return;
+    ApiService.addToCart(
+      productId: productId,
+      quantity: quantity,
+    ).catchError((_) {});
+  }
+
+  void _syncUpdateToBackend(String productId, int quantity) {
+    if (productId.isEmpty) return;
+    ApiService.updateCartItem(
+      productId: productId,
+      quantity: quantity,
+    ).catchError((_) {});
+  }
+
+  void _syncRemoveFromBackend(String productId) {
+    if (productId.isEmpty) return;
+    ApiService.removeFromCart(productId).catchError((_) {});
+  }
+
   // Add item to cart
   void _addToCart(Map<String, dynamic> product) {
+    String productId = '';
+    int quantityForSync = 1;
+
     setState(() {
-      // Check if item already exists in cart (match by both name AND image)
-      final existingIndex = _cartItems.indexWhere(
-        (item) => item['name'] == product['name'] && 
-                  item['image'] == product['image'],
-      );
-      
+      productId = product['id']?.toString() ?? '';
+      final productName = product['name']?.toString() ?? '';
+      final productImage = product['image'];
+
+      // Check if item already exists in cart.
+      // Prefer matching by backend product id when available.
+      final existingIndex = _cartItems.indexWhere((item) {
+        final itemId = item['id']?.toString() ?? '';
+        if (productId.isNotEmpty && itemId.isNotEmpty) {
+          return itemId == productId;
+        }
+        return item['name'] == productName && item['image'] == productImage;
+      });
+
       if (existingIndex >= 0) {
         // If exists, increase quantity
-        _cartItems[existingIndex]['quantity'] = 
+        _cartItems[existingIndex]['quantity'] =
             (_cartItems[existingIndex]['quantity'] as int) + 1;
+        quantityForSync = _cartItems[existingIndex]['quantity'] as int;
       } else {
         // If new, add to cart
-        // Extract price from string like "$89.99" to double
-        String priceStr = product['price'] as String;
-        double price = double.parse(priceStr.replaceAll('\$', '').replaceAll(',', ''));
-        
+        // `price` can come as a String (e.g. "$89.99") or a num (from API).
+        final priceRaw = product['price'];
+        final double price = switch (priceRaw) {
+          final num n => n.toDouble(),
+          final String s =>
+            double.tryParse(s.replaceAll('\$', '').replaceAll(',', '')) ?? 0.0,
+          _ => 0.0,
+        };
+
         // Determine icon based on category
         IconData icon = Icons.shopping_bag;
-        if (product['name'].toString().toLowerCase().contains('perfume') ||
-            product['name'].toString().toLowerCase().contains('fragrance') ||
-            product['name'].toString().toLowerCase().contains('cologne')) {
+        final nameLower = productName.toLowerCase();
+        if (nameLower.contains('perfume') ||
+            nameLower.contains('fragrance') ||
+            nameLower.contains('cologne')) {
           icon = Icons.spa;
-        } else if (product['name'].toString().toLowerCase().contains('watch')) {
+        } else if (nameLower.contains('watch')) {
           icon = Icons.watch;
-        } else if (product['name'].toString().toLowerCase().contains('wallet')) {
+        } else if (nameLower.contains('wallet')) {
           icon = Icons.account_balance_wallet;
         }
-        
+
         _cartItems.add({
+          'id': productId,
+          'productId': productId, // compatibility with checkout parsing
           'name': product['name'],
           'price': price,
           'quantity': 1,
           'icon': icon,
-          'image': product['image'],
+          'image': productImage,
         });
+        quantityForSync = 1;
       }
     });
+
+    _persistCart();
+    _syncAddToBackend(productId, quantityForSync);
   }
 
   // Remove item from cart
   void _removeFromCart(int index) {
+    String productId = '';
     setState(() {
+      productId = _cartItems[index]['id']?.toString() ?? '';
       _cartItems.removeAt(index);
     });
+    _persistCart();
+    _syncRemoveFromBackend(productId);
   }
 
   // Update item quantity
   void _updateCartItemQuantity(int index, int quantity) {
+    String productId = '';
     setState(() {
+      productId = _cartItems[index]['id']?.toString() ?? '';
       if (quantity <= 0) {
         _cartItems.removeAt(index);
       } else {
         _cartItems[index]['quantity'] = quantity;
       }
     });
+    _persistCart();
+    if (quantity <= 0) {
+      _syncRemoveFromBackend(productId);
+    } else {
+      _syncUpdateToBackend(productId, quantity);
+    }
   }
 
   // List of pages for bottom navigation
@@ -193,6 +319,193 @@ class _MainScreenState extends State<MainScreen> {
     ),
   ];
 
+  Widget _buildNavItem({
+    required int index,
+    required IconData icon,
+    required String label,
+    required VoidCallback onTap,
+    bool showBadge = false,
+  }) {
+    final isSelected = _currentIndex == index;
+    return Expanded(
+      child: InkWell(
+        borderRadius: BorderRadius.circular(18),
+        onTap: onTap,
+        child: Padding(
+          padding: const EdgeInsets.symmetric(vertical: 6),
+          child: AnimatedSlide(
+            duration: const Duration(milliseconds: 420),
+            curve: Curves.easeInOutCubicEmphasized,
+            offset: isSelected ? const Offset(0, -0.05) : Offset.zero,
+            child: AnimatedScale(
+              duration: const Duration(milliseconds: 380),
+              curve: Curves.easeInOutCubic,
+              scale: isSelected ? 1.06 : 0.96,
+              child: Column(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  Stack(
+                    clipBehavior: Clip.none,
+                    children: [
+                      AnimatedContainer(
+                        duration: const Duration(milliseconds: 320),
+                        curve: Curves.easeInOutCubic,
+                        padding: EdgeInsets.all(isSelected ? 8 : 7),
+                        decoration: BoxDecoration(
+                          shape: BoxShape.circle,
+                          color: isSelected
+                              ? Colors.white.withValues(alpha: 0.16)
+                              : Colors.transparent,
+                        ),
+                        child: AnimatedSwitcher(
+                          duration: const Duration(milliseconds: 260),
+                          transitionBuilder: (child, animation) =>
+                              FadeTransition(
+                                opacity: animation,
+                                child: ScaleTransition(
+                                  scale: animation,
+                                  child: child,
+                                ),
+                              ),
+                          child: Icon(
+                            icon,
+                            key: ValueKey<bool>(isSelected),
+                            color: isSelected
+                                ? const Color(0xFFF2C94C)
+                                : Colors.white.withValues(alpha: 0.75),
+                            size: isSelected ? 22 : 20,
+                          ),
+                        ),
+                      ),
+                      if (showBadge && _cartItemCount > 0)
+                        Positioned(
+                          right: -7,
+                          top: -5,
+                          child: Container(
+                            padding: const EdgeInsets.symmetric(
+                              horizontal: 5,
+                              vertical: 1,
+                            ),
+                            decoration: BoxDecoration(
+                              color: Colors.red,
+                              borderRadius: BorderRadius.circular(10),
+                            ),
+                            constraints: const BoxConstraints(minWidth: 16),
+                            child: Text(
+                              _cartItemCount > 99 ? '99+' : '$_cartItemCount',
+                              style: const TextStyle(
+                                color: Colors.white,
+                                fontSize: 9,
+                                fontWeight: FontWeight.bold,
+                              ),
+                              textAlign: TextAlign.center,
+                            ),
+                          ),
+                        ),
+                    ],
+                  ),
+                  const SizedBox(height: 2),
+                  AnimatedDefaultTextStyle(
+                    duration: const Duration(milliseconds: 300),
+                    style: TextStyle(
+                      color: isSelected
+                          ? const Color(0xFFF2C94C)
+                          : Colors.white.withValues(alpha: 0.75),
+                      fontSize: 13,
+                      fontWeight: isSelected
+                          ? FontWeight.w700
+                          : FontWeight.w500,
+                    ),
+                    child: Text(label),
+                  ),
+                ],
+              ),
+            ),
+          ),
+        ),
+      ),
+    );
+  }
+
+  Widget _buildGradientBottomBar(BuildContext context) {
+    return SafeArea(
+      top: false,
+      child: Container(
+        margin: const EdgeInsets.fromLTRB(16, 0, 16, 2),
+        height: 84,
+        child: Stack(
+          clipBehavior: Clip.none,
+          children: [
+            Container(
+              decoration: BoxDecoration(
+                borderRadius: BorderRadius.circular(28),
+                gradient: const LinearGradient(
+                  begin: Alignment.topLeft,
+                  end: Alignment.bottomRight,
+                  colors: [
+                    Color(0xFF1F2A44),
+                    Color(0xFF23395B),
+                    Color(0xFF2A3D66),
+                  ],
+                ),
+                boxShadow: [
+                  BoxShadow(
+                    color: const Color(0xFF111827).withValues(alpha: 0.25),
+                    blurRadius: 18,
+                    offset: const Offset(0, 8),
+                  ),
+                ],
+              ),
+            ),
+            Positioned.fill(
+              child: Row(
+                children: [
+                  _buildNavItem(
+                    index: 0,
+                    icon: Icons.home_rounded,
+                    label: 'Home',
+                    onTap: () async {
+                      ScaffoldMessenger.of(context).clearSnackBars();
+                      if (_currentIndex == 0) return;
+                      await Future.delayed(const Duration(milliseconds: 90));
+                      if (!mounted) return;
+                      setState(() => _currentIndex = 0);
+                    },
+                  ),
+                  _buildNavItem(
+                    index: 1,
+                    icon: Icons.shopping_bag_rounded,
+                    label: 'Products',
+                    onTap: () async {
+                      ScaffoldMessenger.of(context).clearSnackBars();
+                      if (_currentIndex == 1) return;
+                      await Future.delayed(const Duration(milliseconds: 90));
+                      if (!mounted) return;
+                      setState(() => _currentIndex = 1);
+                    },
+                  ),
+                  _buildNavItem(
+                    index: 2,
+                    icon: Icons.shopping_cart_rounded,
+                    label: 'My Cart',
+                    showBadge: true,
+                    onTap: () async {
+                      ScaffoldMessenger.of(context).clearSnackBars();
+                      if (_currentIndex == 2) return;
+                      await Future.delayed(const Duration(milliseconds: 90));
+                      if (!mounted) return;
+                      setState(() => _currentIndex = 2);
+                    },
+                  ),
+                ],
+              ),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+
   // Get dynamic AppBar title based on current page
   Widget? _getAppBarTitle() {
     switch (_currentIndex) {
@@ -204,15 +517,10 @@ class _MainScreenState extends State<MainScreen> {
           fit: BoxFit.contain,
         );
       case 1: // Products
-        return const Text(
-          'Products',
-        );
-    
-      case 2: // My Cart
-        return const Text(
-          'My Cart',
+        return const Text('Products');
 
-        );
+      case 2: // My Cart
+        return const Text('My Cart');
       default:
         return null;
     }
@@ -227,8 +535,8 @@ class _MainScreenState extends State<MainScreen> {
         elevation: 0,
         systemOverlayStyle: const SystemUiOverlayStyle(
           statusBarColor: Colors.transparent,
-          statusBarIconBrightness: Brightness.dark, 
-          statusBarBrightness: Brightness.light, 
+          statusBarIconBrightness: Brightness.dark,
+          statusBarBrightness: Brightness.light,
         ),
         leading: Builder(
           builder: (context) => IconButton(
@@ -247,13 +555,16 @@ class _MainScreenState extends State<MainScreen> {
           return FadeTransition(
             opacity: animation,
             child: SlideTransition(
-              position: Tween<Offset>(
-                begin: const Offset(0.05, 0.0),
-                end: Offset.zero,
-              ).animate(CurvedAnimation(
-                parent: animation,
-                curve: Curves.easeInOutCubic,
-              )),
+              position:
+                  Tween<Offset>(
+                    begin: const Offset(0.05, 0.0),
+                    end: Offset.zero,
+                  ).animate(
+                    CurvedAnimation(
+                      parent: animation,
+                      curve: Curves.easeInOutCubic,
+                    ),
+                  ),
               child: child,
             ),
           );
@@ -263,35 +574,7 @@ class _MainScreenState extends State<MainScreen> {
           child: _pages[_currentIndex],
         ),
       ),
-      bottomNavigationBar: BottomNavigationBar(
-        currentIndex: _currentIndex,
-        onTap: (index) {
-          // Dismiss all active SnackBars before navigating
-          ScaffoldMessenger.of(context).clearSnackBars();
-          // Add a small delay for smoother transition
-          Future.delayed(const Duration(milliseconds: 200), () {
-            if (mounted) {
-              setState(() {
-                _currentIndex = index;
-              });
-            }
-          });
-        },
-        items: const [
-          BottomNavigationBarItem(
-            icon: Icon(Icons.home),
-            label: 'Home',
-          ),
-          BottomNavigationBarItem(
-            icon: Icon(Icons.shopping_bag),
-            label: 'Products',
-          ),
-          BottomNavigationBarItem(
-            icon: Icon(Icons.shopping_cart),
-            label: 'My Cart',
-          ),
-        ],
-      ),
+      bottomNavigationBar: _buildGradientBottomBar(context),
     );
   }
 
@@ -301,11 +584,9 @@ class _MainScreenState extends State<MainScreen> {
       backgroundColor: cs.surface,
       child: ListView(
         padding: EdgeInsets.zero,
-          children: [
+        children: [
           DrawerHeader(
-            decoration: BoxDecoration(
-              color: cs.primary,
-            ),
+            decoration: BoxDecoration(color: cs.primary),
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.center,
               mainAxisAlignment: MainAxisAlignment.center,
@@ -318,10 +599,13 @@ class _MainScreenState extends State<MainScreen> {
                 ),
               ],
             ),
-      ),
-      ListTile(
+          ),
+          ListTile(
             leading: const Icon(Icons.receipt_long, color: Colors.white70),
-            title: const Text('My Orders', style: TextStyle(color: Colors.white)),
+            title: const Text(
+              'My Orders',
+              style: TextStyle(color: Colors.white),
+            ),
             onTap: () {
               Navigator.pop(context);
               ScaffoldMessenger.of(context).showSnackBar(
@@ -334,7 +618,10 @@ class _MainScreenState extends State<MainScreen> {
           ),
           ListTile(
             leading: const Icon(Icons.info_outline, color: Colors.white70),
-            title: const Text('About Us', style: TextStyle(color: Colors.white)),
+            title: const Text(
+              'About Us',
+              style: TextStyle(color: Colors.white),
+            ),
             onTap: () {
               Navigator.pop(context);
               Navigator.push(
@@ -343,11 +630,13 @@ class _MainScreenState extends State<MainScreen> {
               );
             },
           ),
-         
-          
+
           ListTile(
             leading: const Icon(Icons.contact_mail, color: Colors.white70),
-            title: const Text('Contact Us', style: TextStyle(color: Colors.white)),
+            title: const Text(
+              'Contact Us',
+              style: TextStyle(color: Colors.white),
+            ),
             onTap: () {
               Navigator.pop(context);
               Navigator.push(
@@ -356,9 +645,12 @@ class _MainScreenState extends State<MainScreen> {
               );
             },
           ),
-           ListTile(
+          ListTile(
             leading: const Icon(Icons.settings, color: Colors.white70),
-            title: const Text('Settings', style: TextStyle(color: Colors.white)),
+            title: const Text(
+              'Settings',
+              style: TextStyle(color: Colors.white),
+            ),
             onTap: () {
               Navigator.pop(context);
               Navigator.push(
@@ -370,7 +662,10 @@ class _MainScreenState extends State<MainScreen> {
           const Divider(color: Colors.white24),
           ListTile(
             leading: const Icon(Icons.policy, color: Colors.white70),
-            title: const Text('Privacy Policy', style: TextStyle(color: Colors.white)),
+            title: const Text(
+              'Privacy Policy',
+              style: TextStyle(color: Colors.white),
+            ),
             onTap: () {
               Navigator.pop(context);
               ScaffoldMessenger.of(context).showSnackBar(
@@ -383,7 +678,10 @@ class _MainScreenState extends State<MainScreen> {
           ),
           ListTile(
             leading: const Icon(Icons.description, color: Colors.white70),
-            title: const Text('Terms & Conditions', style: TextStyle(color: Colors.white)),
+            title: const Text(
+              'Terms & Conditions',
+              style: TextStyle(color: Colors.white),
+            ),
             onTap: () {
               Navigator.pop(context);
               ScaffoldMessenger.of(context).showSnackBar(
@@ -400,10 +698,7 @@ class _MainScreenState extends State<MainScreen> {
             leading: const Icon(Icons.logout, color: Colors.red),
             title: const Text(
               'Logout',
-              style: TextStyle(
-                color: Colors.red,
-                fontWeight: FontWeight.bold,
-              ),
+              style: TextStyle(color: Colors.red, fontWeight: FontWeight.bold),
             ),
             onTap: () {
               Navigator.pop(context);
@@ -427,7 +722,9 @@ class _MainScreenState extends State<MainScreen> {
                         await StorageService.clearAll();
                         // Navigate back to sign in page
                         Navigator.of(context).pushAndRemoveUntil(
-                          MaterialPageRoute(builder: (context) => const SignInPage()),
+                          MaterialPageRoute(
+                            builder: (context) => const SignInPage(),
+                          ),
                           (route) => false,
                         );
                         ScaffoldMessenger.of(context).showSnackBar(

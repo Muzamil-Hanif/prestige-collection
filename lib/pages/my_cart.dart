@@ -22,6 +22,12 @@ class MyCart extends StatefulWidget {
 class _MyCartState extends State<MyCart> {
   bool _isNavigating = false;
 
+  IconData _cartItemIcon(Map<String, dynamic> item) {
+    final icon = item['icon'];
+    if (icon is IconData) return icon;
+    return Icons.shopping_bag_outlined;
+  }
+
   double get _totalPrice {
     return widget.cartItems.fold(
       0.0,
@@ -152,28 +158,45 @@ class _MyCartState extends State<MyCart> {
                         leading: item['image'] != null
                             ? ClipRRect(
                                 borderRadius: BorderRadius.circular(30),
-                                child: Image.asset(
-                                  item['image'] as String,
-                                  width: 60,
-                                  height: 60,
-                                  fit: BoxFit.cover,
-                                  errorBuilder: (context, error, stackTrace) {
-                                    return CircleAvatar(
-                                      backgroundColor:
-                                          Theme.of(context).colorScheme.primaryContainer,
-                                      child: Icon(
-                                        item['icon'] as IconData,
-                                        color: Theme.of(context).colorScheme.onPrimaryContainer,
+                                child: (item['image'] as String).startsWith('http')
+                                    ? Image.network(
+                                        item['image'] as String,
+                                        width: 60,
+                                        height: 60,
+                                        fit: BoxFit.cover,
+                                        errorBuilder: (context, error, stackTrace) {
+                                          return CircleAvatar(
+                                            backgroundColor:
+                                                Theme.of(context).colorScheme.primaryContainer,
+                                            child: Icon(
+                                              _cartItemIcon(item),
+                                              color: Theme.of(context).colorScheme.onPrimaryContainer,
+                                            ),
+                                          );
+                                        },
+                                      )
+                                    : Image.asset(
+                                        item['image'] as String,
+                                        width: 60,
+                                        height: 60,
+                                        fit: BoxFit.cover,
+                                        errorBuilder: (context, error, stackTrace) {
+                                          return CircleAvatar(
+                                            backgroundColor:
+                                                Theme.of(context).colorScheme.primaryContainer,
+                                            child: Icon(
+                                              _cartItemIcon(item),
+                                              color: Theme.of(context).colorScheme.onPrimaryContainer,
+                                            ),
+                                          );
+                                        },
                                       ),
-                                    );
-                                  },
-                                ),
                               )
                             : CircleAvatar(
                                 backgroundColor:
                                     Theme.of(context).colorScheme.primaryContainer,
                                 child: Icon(
-                                  item['icon'] as IconData,
+                                  _cartItemIcon(item),
                                   color: Theme.of(context).colorScheme.onPrimaryContainer,
                                 ),
                               ),
@@ -315,23 +338,31 @@ class _MyCartState extends State<MyCart> {
     );
   }
 
-  Widget _buildCartSummary(BuildContext context) {
-    return Container(
-      padding: const EdgeInsets.all(16),
-      decoration: BoxDecoration(
-        color: Theme.of(context).colorScheme.surface,
-        boxShadow: [
-          BoxShadow(
-            color: Colors.black.withOpacity(0.1),
-            blurRadius: 4,
-            offset: const Offset(0, -2),
-          ),
-        ],
-      ),
-      child: Column(
-        mainAxisSize: MainAxisSize.min,
-        crossAxisAlignment: CrossAxisAlignment.stretch,
-        children: [
+Widget _buildCartSummary(BuildContext context) {
+  final bottomPadding = MediaQuery.of(context).padding.bottom;
+
+  return Container(
+    margin: EdgeInsets.only(
+      left: 16,        // ✅ gap from left edge
+      right: 16,       // ✅ gap from right edge
+      bottom: 12 + bottomPadding, // ✅ gap from bottom nav
+    ),
+    padding: const EdgeInsets.all(16),
+    decoration: BoxDecoration(
+      color: Theme.of(context).colorScheme.surface,
+      borderRadius: BorderRadius.circular(16), 
+      boxShadow: [
+        BoxShadow(
+          color: Colors.black.withOpacity(0.1),
+          blurRadius: 4,
+          offset: const Offset(0, -2),
+        ),
+      ],
+    ),
+    child: Column(
+      mainAxisSize: MainAxisSize.min,
+      crossAxisAlignment: CrossAxisAlignment.stretch,
+      children: [
           Row(
             mainAxisAlignment: MainAxisAlignment.spaceBetween,
             children: [
@@ -410,12 +441,19 @@ class _MyCartState extends State<MyCart> {
             },
             style: ElevatedButton.styleFrom(
               padding: const EdgeInsets.symmetric(vertical: 16),
-              backgroundColor: Theme.of(context).colorScheme.primary,
+              backgroundColor: Theme.of(context).colorScheme.secondary,
               foregroundColor: Theme.of(context).colorScheme.onPrimary,
+               shape: RoundedRectangleBorder(
+                borderRadius: BorderRadius.circular(14),
+              ),
             ),
             child: const Text(
               'Proceed to Checkout',
-              style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold,),
+              style: TextStyle(
+                      color: Color(0xFF0F172A),
+                      fontWeight: FontWeight.w700,
+                      fontSize: 16,
+                    ),
             ),
           ),
         ],
