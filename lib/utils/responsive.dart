@@ -28,5 +28,5 @@ class Responsive {
       isDesktop(context) ? 160 : 120;
 
   static double bannerHeight(BuildContext context) =>
-      isDesktop(context) ? 200 : 140;
+      isDesktop(context) ? 240 : 140;
 }

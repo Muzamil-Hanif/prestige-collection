@@ -270,48 +270,85 @@ class _HomePageState extends State<HomePage> {
 
   @override
   Widget build(BuildContext context) {
+    final isWeb = Responsive.isDesktop(context);
+    final padding = isWeb ? 32.0 : 16.0;
+
     return Container(
       color: const Color(0xFFF5F5F5),
       child: SafeArea(
         child: RefreshIndicator(
           onRefresh: _loadFeaturedProducts,
           child: ListView(
-            padding: const EdgeInsets.all(16),
+            padding: EdgeInsets.all(padding),
             children: [
-              Row(
-                mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                children: [
-                  Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
+              if (isWeb)
+                Padding(
+                  padding: const EdgeInsets.only(bottom: 32),
+                  child: Row(
+                    mainAxisAlignment: MainAxisAlignment.spaceBetween,
                     children: [
-                      const Text('Hello, Welcome', style: TextStyle(color: Color(0xFF6B7280), fontSize: 14)),
-                      const SizedBox(height: 4),
-                      Text(
-                        _profile?.fullName ?? (_isProfileLoading ? 'Loading...' : 'Guest'),
-                        style: const TextStyle(
-                          color: Color(0xFF374151),
-                          fontSize: 34,
-                          fontWeight: FontWeight.bold,
-                        ),
+                      Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          const Text('Hello, Welcome', style: TextStyle(color: Color(0xFF6B7280), fontSize: 14)),
+                          const SizedBox(height: 8),
+                          Text(
+                            _profile?.fullName ?? (_isProfileLoading ? 'Loading...' : 'Guest'),
+                            style: const TextStyle(
+                              color: Color(0xFF374151),
+                              fontSize: 42,
+                              fontWeight: FontWeight.bold,
+                            ),
+                          ),
+                        ],
+                      ),
+                      InkWell(
+                        borderRadius: BorderRadius.circular(999),
+                        onTap: () async {
+                          await Navigator.of(context).push(MaterialPageRoute(builder: (_) => const MyProfilePage()));
+                          if (!mounted) return;
+                          _loadProfile();
+                        },
+                        child: _buildHeaderAvatar(),
                       ),
                     ],
                   ),
-                  InkWell(
-                    borderRadius: BorderRadius.circular(999),
-                    onTap: () async {
-                      await Navigator.of(
-                        context,
-                      ).push(MaterialPageRoute(builder: (_) => const MyProfilePage()));
-                      if (!mounted) return;
-                      _loadProfile();
-                    },
-                    child: _buildHeaderAvatar(),
+                )
+              else
+                Padding(
+                  padding: const EdgeInsets.only(bottom: 18),
+                  child: Row(
+                    mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                    children: [
+                      Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          const Text('Hello, Welcome', style: TextStyle(color: Color(0xFF6B7280), fontSize: 14)),
+                          const SizedBox(height: 4),
+                          Text(
+                            _profile?.fullName ?? (_isProfileLoading ? 'Loading...' : 'Guest'),
+                            style: const TextStyle(
+                              color: Color(0xFF374151),
+                              fontSize: 34,
+                              fontWeight: FontWeight.bold,
+                            ),
+                          ),
+                        ],
+                      ),
+                      InkWell(
+                        borderRadius: BorderRadius.circular(999),
+                        onTap: () async {
+                          await Navigator.of(context).push(MaterialPageRoute(builder: (_) => const MyProfilePage()));
+                          if (!mounted) return;
+                          _loadProfile();
+                        },
+                        child: _buildHeaderAvatar(),
+                      ),
+                    ],
                   ),
-                ],
-              ),
-              const SizedBox(height: 18),
+                ),
               _buildPromoSlider(context),
-              const SizedBox(height: 20),
+              SizedBox(height: isWeb ? 32 : 20),
               Row(
                 mainAxisAlignment: MainAxisAlignment.spaceBetween,
                 children: [
@@ -319,7 +356,7 @@ class _HomePageState extends State<HomePage> {
                     'Featured by category',
                     style: TextStyle(fontSize: 18, fontWeight: FontWeight.w700, color: Color(0xFF6B7280)),
                   ),
-                  _buildViewSwitcher(),
+                  if (!isWeb) _buildViewSwitcher(),
                 ],
               ),
               const SizedBox(height: 10),
@@ -338,6 +375,19 @@ class _HomePageState extends State<HomePage> {
                       ElevatedButton(onPressed: _loadFeaturedProducts, child: const Text('Retry')),
                     ],
                   ),
+                )
+              else if (isWeb)
+                GridView.builder(
+                  shrinkWrap: true,
+                  physics: const NeverScrollableScrollPhysics(),
+                  itemCount: _homeCategoryCodes.length,
+                  gridDelegate: const SliverGridDelegateWithFixedCrossAxisCount(
+                    crossAxisCount: 4,
+                    crossAxisSpacing: 20,
+                    mainAxisSpacing: 20,
+                    childAspectRatio: 0.62,
+                  ),
+                  itemBuilder: (context, index) => _buildFeaturedGridCard(_homeCategoryCodes[index]),
                 )
               else if (_showGridCards)
                 GridView.builder(

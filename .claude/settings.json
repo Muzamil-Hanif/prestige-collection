@@ -30,6 +30,12 @@
             "if": "Bash(git commit*)"
           },
           {
+            "type": "command",
+            "command": "git diff --cached --name-only --diff-filter=ACM 2>/dev/null | grep -E '(^web/|lib/pages/web_)' | while read file; do violations=$(grep -n -E '(Color\\(0x|EdgeInsets\\([^(]*[0-9](?!0|4|8|2|6)(?!2|6)\\)|borderRadius[^(]*[0-9](?!2|6|8)\\(|fontSize[^0-9]*(?!9|2|4|6|0|8)\\d)' \"$file\" 2>/dev/null || true); if [ -n \"$violations\" ]; then echo \"⚠️  Design system violation in $file:\"; echo \"$violations\"; fi; done | if grep -q '⚠️'; then { echo '{\"systemMessage\": \"🎨 Web code design system check:\\n'; grep -h '⚠️' | head -10; echo '\\nEnsure web code follows design.md: colors (#111827, #F2C94C, #1F2937, #F5F5F5), spacing (4px units: 8, 12, 16, 20, 24px), border-radius (12, 16, 28px), font-sizes (9, 12, 14, 16, 20, 28px).\\n\\nMobile code in lib/pages/ (non-web_*) is not checked.\"}'; } | jq -Rs .; fi",
+            "if": "Bash(git commit*)",
+            "statusMessage": "Checking web code design compliance..."
+          },
+          {
             "type": "prompt",
             "prompt": "User is running a git commit. Before they proceed, ask: 'Before committing, have you updated CLAUDE.md to reflect your changes? Check: new commands, dependencies, patterns, or architecture updates.' If they confirm, respond with {\"ok\": true}. If unsure, respond with {\"ok\": false, \"reason\": \"User should update CLAUDE.md first\"}.",
             "if": "Bash(git commit*)"

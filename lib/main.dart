@@ -13,7 +13,10 @@ import 'pages/contact_page.dart';
 import 'services/storage_service.dart';
 import 'services/api_service.dart';
 import 'services/api_config.dart';
+import 'models/menu_item_model.dart';
+import 'services/navigation_service.dart';
 import 'utils/responsive.dart';
+import 'widgets/responsive_drawer.dart';
 
 void main() {
   ApiService.setProduction(ApiConfig.isProduction);
@@ -598,7 +601,7 @@ class _MainScreenState extends State<MainScreen> {
       );
     }
 
-    // Tablet/Desktop: AppBar with TabBar
+    // Tablet/Desktop: Elegant AppBar with logo, hamburger, tabs, and cart
     return AppBar(
       backgroundColor: Colors.transparent,
       elevation: 0,
@@ -607,34 +610,197 @@ class _MainScreenState extends State<MainScreen> {
         statusBarIconBrightness: Brightness.dark,
         statusBarBrightness: Brightness.light,
       ),
-      leading: Builder(
-        builder: (context) => IconButton(
-          icon: const Icon(Icons.menu, color: Colors.black87),
-          onPressed: () => Scaffold.of(context).openDrawer(),
+      leadingWidth: 80,
+      leading: Padding(
+        padding: const EdgeInsets.only(left: 24, top: 8, bottom: 8),
+        child: SvgPicture.asset(
+          'assets/images/prestige-men-logo-V4.svg',
+          height: 80,
+          width: 80,
+          fit: BoxFit.contain,
         ),
       ),
-      title: SvgPicture.asset(
-        'assets/images/prestige-men-logo-V4.svg',
-        height: 50,
-        width: 50,
-        fit: BoxFit.contain,
+      title: Row(
+        mainAxisAlignment: MainAxisAlignment.center,
+        children: [
+          _buildTabBarItem(0, Icons.home_rounded, 'Home'),
+          const SizedBox(width: 48),
+          _buildTabBarItem(1, Icons.shopping_bag_rounded, 'Products'),
+          const SizedBox(width: 48),
+          _buildTabBarItem(2, Icons.shopping_cart_rounded, 'My Cart'),
+        ],
       ),
-      bottom: PreferredSize(
-        preferredSize: const Size.fromHeight(60),
-        child: Container(
-          padding: const EdgeInsets.symmetric(horizontal: 16),
-          child: Row(
-            mainAxisAlignment: MainAxisAlignment.center,
+      actions: [
+        // Cart icon with badge (top right)
+        Padding(
+          padding: const EdgeInsets.only(right: 8),
+          child: Stack(
+            clipBehavior: Clip.none,
             children: [
-              _buildTabBarItem(0, Icons.home_rounded, 'Home'),
-              const SizedBox(width: 32),
-              _buildTabBarItem(1, Icons.shopping_bag_rounded, 'Products'),
-              const SizedBox(width: 32),
-              _buildTabBarItem(2, Icons.shopping_cart_rounded, 'My Cart'),
+              IconButton(
+                icon: const Icon(Icons.shopping_cart_outlined, color: Colors.black87),
+                onPressed: () {
+                  setState(() => _currentIndex = 2);
+                },
+              ),
+              if (_cartItemCount > 0)
+                Positioned(
+                  right: 8,
+                  top: 8,
+                  child: Container(
+                    padding: const EdgeInsets.symmetric(horizontal: 5, vertical: 1),
+                    decoration: BoxDecoration(
+                      color: Colors.red,
+                      borderRadius: BorderRadius.circular(10),
+                    ),
+                    child: Text(
+                      _cartItemCount > 99 ? '99+' : '$_cartItemCount',
+                      style: const TextStyle(
+                        color: Colors.white,
+                        fontSize: 9,
+                        fontWeight: FontWeight.bold,
+                      ),
+                    ),
+                  ),
+                ),
+            ],
+          ),
+        ),
+        // Hamburger menu icon for side panel (top right)
+        Padding(
+          padding: const EdgeInsets.only(right: 16),
+          child: IconButton(
+            icon: const Icon(Icons.menu_rounded, color: Colors.black87, size: 28),
+            tooltip: 'Menu',
+            onPressed: () {
+              // Show sidebar sliding from left
+              final menuItems = NavigationService.getMainMenuItems(context);
+              _showLeftSidePanel(context, menuItems);
+            },
+          ),
+        ),
+      ],
+      toolbarHeight: 80,
+    );
+  }
+
+  // Show left side panel with slide animation
+  void _showLeftSidePanel(BuildContext context, List<MenuItemConfig> menuItems) {
+    showGeneralDialog(
+      context: context,
+      barrierDismissible: true,
+      barrierLabel: 'Close menu',
+      barrierColor: Colors.black54,
+      transitionDuration: const Duration(milliseconds: 300),
+      pageBuilder: (context, animation, secondaryAnimation) {
+        return const SizedBox.expand();
+      },
+      transitionBuilder: (context, animation, secondaryAnimation, child) {
+        return Stack(
+          children: [
+            // Backdrop that closes the menu when tapped
+            GestureDetector(
+              onTap: () => Navigator.pop(context),
+              child: Container(
+                color: Colors.black.withValues(alpha: 0.5 * animation.value),
+              ),
+            ),
+            // Side panel sliding from left
+            SlideTransition(
+              position: Tween<Offset>(
+                begin: const Offset(-1, 0),
+                end: Offset.zero,
+              ).animate(
+                CurvedAnimation(parent: animation, curve: Curves.easeInOutCubic),
+              ),
+              child: _buildWebSidePanelModal(context, menuItems),
+            ),
+          ],
+        );
+      },
+    );
+  }
+
+  // Build web side panel modal (hamburger menu modal)
+  Widget _buildWebSidePanelModal(BuildContext context, List<MenuItemConfig> menuItems) {
+    final cs = Theme.of(context).colorScheme;
+    return Align(
+      alignment: Alignment.topLeft,
+      child: Material(
+        color: cs.surface,
+        child: Container(
+          width: 320,
+          height: MediaQuery.sizeOf(context).height,
+          color: cs.surface,
+          child: Column(
+            children: [
+              // Header with logo and close button
+              Container(
+                padding: const EdgeInsets.all(16),
+                decoration: BoxDecoration(
+                  color: cs.primary,
+                  // border: Border(
+                  //   bottom: BorderSide(color: Colors.white24),
+                  // ),
+                ),
+                child: Row(
+                  mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                  children: [
+                    // Logo
+                    SvgPicture.asset(
+                      'assets/images/prestige-men-logo-V5.svg',
+                      height: 80, 
+                      width: 80,
+                      fit: BoxFit.contain,
+                    ),
+                  ],
+                ),
+              ),
+              // const Divider(color: Colors.white24),
+              // Menu items
+              Expanded(
+                child: ListView.builder(
+                  padding: const EdgeInsets.symmetric(vertical: 8),
+                  itemCount: menuItems.length,
+                  itemBuilder: (context, index) {
+                    final item = menuItems[index];
+                    if (item.isDivider) {
+                      return Padding(
+                        padding: const EdgeInsets.symmetric(vertical: 8),
+                        child: Divider(color: Colors.white24),
+                      );
+                    }
+                    return _buildWebModalMenuItem(context, item);
+                  },
+                ),
+              ),
             ],
           ),
         ),
       ),
+    );
+  }
+
+  // Build individual menu item for web modal
+  Widget _buildWebModalMenuItem(BuildContext context, MenuItemConfig item) {
+    final textColor = item.isDestructive ? Colors.red : Colors.white;
+    final iconColor = item.isDestructive ? Colors.red : Colors.white70;
+
+    return ListTile(
+      leading: Icon(item.icon, color: iconColor),
+      title: Text(
+        item.label,
+        style: TextStyle(
+          color: textColor,
+          fontWeight: item.isDestructive ? FontWeight.bold : FontWeight.normal,
+        ),
+      ),
+      onTap: () {
+        Navigator.pop(context); // Close modal first
+        item.onTap?.call();
+      },
+      contentPadding: const EdgeInsets.symmetric(horizontal: 16),
+      hoverColor: Colors.white.withValues(alpha: 0.1),
     );
   }
 
@@ -649,34 +815,47 @@ class _MainScreenState extends State<MainScreen> {
         if (!mounted) return;
         setState(() => _currentIndex = index);
       },
-      child: Column(
-        mainAxisSize: MainAxisSize.min,
-        children: [
-          Icon(
-            icon,
-            color: isSelected ? const Color(0xFFF2C94C) : Colors.black87,
-            size: isSelected ? 24 : 20,
-          ),
-          const SizedBox(height: 4),
-          Text(
-            label,
-            style: TextStyle(
-              color: isSelected ? const Color(0xFFF2C94C) : Colors.black87,
-              fontSize: 13,
-              fontWeight: isSelected ? FontWeight.w700 : FontWeight.w500,
-            ),
-          ),
-          const SizedBox(height: 12),
-          if (isSelected)
-            Container(
-              height: 3,
-              width: 40,
-              decoration: BoxDecoration(
-                color: const Color(0xFFF2C94C),
-                borderRadius: BorderRadius.circular(1.5),
+      borderRadius: BorderRadius.circular(16),
+      child: AnimatedContainer(
+        duration: const Duration(milliseconds: 300),
+        padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+        decoration: BoxDecoration(
+          color: isSelected
+              ? const Color(0xFFF2C94C).withValues(alpha: 0.1)
+              : Colors.transparent,
+          borderRadius: BorderRadius.circular(16),
+        ),
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            AnimatedDefaultTextStyle(
+              duration: const Duration(milliseconds: 260),
+              style: TextStyle(
+                color: isSelected ? const Color(0xFFF2C94C) : Colors.black87,
+                fontSize: 13,
+                fontWeight: isSelected ? FontWeight.w700 : FontWeight.w500,
+              ),
+              child: Row(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  AnimatedScale(
+                    duration: const Duration(milliseconds: 260),
+                    scale: isSelected ? 1.15 : 1.0,
+                    child: Icon(
+                      icon,
+                      color: isSelected
+                          ? const Color(0xFFF2C94C)
+                          : Colors.black87,
+                      size: 18,
+                    ),
+                  ),
+                  const SizedBox(width: 8),
+                  Text(label),
+                ],
               ),
             ),
-        ],
+          ],
+        ),
       ),
     );
   }
@@ -684,11 +863,52 @@ class _MainScreenState extends State<MainScreen> {
   @override
   Widget build(BuildContext context) {
     final isWideScreen = Responsive.isTablet(context) || Responsive.isDesktop(context);
+    final menuItems = NavigationService.getMainMenuItems(context);
 
+    if (isWideScreen) {
+      // Web: Hamburger menu only (no permanent sidebar)
+      return Scaffold(
+        backgroundColor: const Color(0xFFF5F5F5),
+        appBar: _buildAppBar(context),
+        body: Center(
+          child: ConstrainedBox(
+            constraints: const BoxConstraints(maxWidth: 1200),
+            child: AnimatedSwitcher(
+              duration: const Duration(milliseconds: 600),
+              switchInCurve: Curves.easeInOutCubic,
+              switchOutCurve: Curves.easeInOutCubic,
+              transitionBuilder: (Widget child, Animation<double> animation) {
+                return FadeTransition(
+                  opacity: animation,
+                  child: SlideTransition(
+                    position: Tween<Offset>(
+                      begin: const Offset(0.05, 0.0),
+                      end: Offset.zero,
+                    ).animate(
+                      CurvedAnimation(
+                        parent: animation,
+                        curve: Curves.easeInOutCubic,
+                      ),
+                    ),
+                    child: child,
+                  ),
+                );
+              },
+              child: Container(
+                key: ValueKey<int>(_currentIndex),
+                child: _pages[_currentIndex],
+              ),
+            ),
+          ),
+        ),
+      );
+    }
+
+    // Mobile: Drawer + Bottom Nav
     return Scaffold(
-      backgroundColor: Color(0xFFF5F5F5),
+      backgroundColor: const Color(0xFFF5F5F5),
       appBar: _buildAppBar(context),
-      drawer: _buildDrawer(context),
+      drawer: ResponsiveDrawer(items: menuItems),
       body: Center(
         child: ConstrainedBox(
           constraints: const BoxConstraints(maxWidth: 1200),
@@ -700,16 +920,15 @@ class _MainScreenState extends State<MainScreen> {
               return FadeTransition(
                 opacity: animation,
                 child: SlideTransition(
-                  position:
-                      Tween<Offset>(
-                        begin: const Offset(0.05, 0.0),
-                        end: Offset.zero,
-                      ).animate(
-                        CurvedAnimation(
-                          parent: animation,
-                          curve: Curves.easeInOutCubic,
-                        ),
-                      ),
+                  position: Tween<Offset>(
+                    begin: const Offset(0.05, 0.0),
+                    end: Offset.zero,
+                  ).animate(
+                    CurvedAnimation(
+                      parent: animation,
+                      curve: Curves.easeInOutCubic,
+                    ),
+                  ),
                   child: child,
                 ),
               );
@@ -721,178 +940,8 @@ class _MainScreenState extends State<MainScreen> {
           ),
         ),
       ),
-      bottomNavigationBar: !isWideScreen ? _buildGradientBottomBar(context) : null,
+      bottomNavigationBar: _buildGradientBottomBar(context),
     );
   }
 
-  Widget _buildDrawer(BuildContext context) {
-    final cs = Theme.of(context).colorScheme;
-    return Drawer(
-      backgroundColor: cs.surface,
-      child: ListView(
-        padding: EdgeInsets.zero,
-        children: [
-          DrawerHeader(
-            decoration: BoxDecoration(color: cs.primary),
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.center,
-              mainAxisAlignment: MainAxisAlignment.center,
-              children: [
-                SvgPicture.asset(
-                  'assets/images/prestige-men-logo-V5.svg',
-                  height: 90,
-                  width: 90,
-                  fit: BoxFit.contain,
-                ),
-              ],
-            ),
-          ),
-          ListTile(
-            leading: const Icon(Icons.receipt_long, color: Colors.white70),
-            title: const Text(
-              'My Orders',
-              style: TextStyle(color: Colors.white),
-            ),
-            onTap: () {
-              Navigator.pop(context);
-              ScaffoldMessenger.of(context).showSnackBar(
-                const SnackBar(
-                  content: Text('Orders page coming soon'),
-                  duration: Duration(seconds: 3),
-                ),
-              );
-            },
-          ),
-          ListTile(
-            leading: const Icon(Icons.info_outline, color: Colors.white70),
-            title: const Text(
-              'About Us',
-              style: TextStyle(color: Colors.white),
-            ),
-            onTap: () {
-              Navigator.pop(context);
-              Navigator.push(
-                context,
-                MaterialPageRoute(builder: (context) => const AboutPage()),
-              );
-            },
-          ),
-
-          ListTile(
-            leading: const Icon(Icons.contact_mail, color: Colors.white70),
-            title: const Text(
-              'Contact Us',
-              style: TextStyle(color: Colors.white),
-            ),
-            onTap: () {
-              Navigator.pop(context);
-              Navigator.push(
-                context,
-                MaterialPageRoute(builder: (context) => const ContactPage()),
-              );
-            },
-          ),
-          ListTile(
-            leading: const Icon(Icons.settings, color: Colors.white70),
-            title: const Text(
-              'Settings',
-              style: TextStyle(color: Colors.white),
-            ),
-            onTap: () {
-              Navigator.pop(context);
-              Navigator.push(
-                context,
-                MaterialPageRoute(builder: (context) => const SettingsPage()),
-              );
-            },
-          ),
-          const Divider(color: Colors.white24),
-          ListTile(
-            leading: const Icon(Icons.policy, color: Colors.white70),
-            title: const Text(
-              'Privacy Policy',
-              style: TextStyle(color: Colors.white),
-            ),
-            onTap: () {
-              Navigator.pop(context);
-              ScaffoldMessenger.of(context).showSnackBar(
-                const SnackBar(
-                  content: Text('Privacy Policy page coming soon'),
-                  duration: Duration(seconds: 3),
-                ),
-              );
-            },
-          ),
-          ListTile(
-            leading: const Icon(Icons.description, color: Colors.white70),
-            title: const Text(
-              'Terms & Conditions',
-              style: TextStyle(color: Colors.white),
-            ),
-            onTap: () {
-              Navigator.pop(context);
-              ScaffoldMessenger.of(context).showSnackBar(
-                const SnackBar(
-                  content: Text('Terms & Conditions page coming soon'),
-                  duration: Duration(seconds: 3),
-                ),
-              );
-            },
-          ),
-          const Divider(color: Colors.white24),
-          // Logout Button
-          ListTile(
-            leading: const Icon(Icons.logout, color: Colors.red),
-            title: const Text(
-              'Logout',
-              style: TextStyle(color: Colors.red, fontWeight: FontWeight.bold),
-            ),
-            onTap: () {
-              Navigator.pop(context);
-              showDialog(
-                context: context,
-                builder: (context) => AlertDialog(
-                  title: const Text('Logout'),
-                  content: const Text('Are you sure you want to logout?'),
-                  actions: [
-                    TextButton(
-                      onPressed: () => Navigator.pop(context),
-                      style: TextButton.styleFrom(
-                        foregroundColor: Colors.white,
-                      ),
-                      child: const Text('Cancel'),
-                    ),
-                    TextButton(
-                      onPressed: () async {
-                        Navigator.pop(context);
-                        // Clear stored authentication data
-                        await StorageService.clearAll();
-                        // Navigate back to sign in page
-                        Navigator.of(context).pushAndRemoveUntil(
-                          MaterialPageRoute(
-                            builder: (context) => const SignInPage(),
-                          ),
-                          (route) => false,
-                        );
-                        ScaffoldMessenger.of(context).showSnackBar(
-                          const SnackBar(
-                            content: Text('Logged out successfully'),
-                            duration: Duration(seconds: 3),
-                          ),
-                        );
-                      },
-                      child: const Text(
-                        'Logout',
-                        style: TextStyle(color: Colors.red),
-                      ),
-                    ),
-                  ],
-                ),
-              );
-            },
-          ),
-        ],
-      ),
-    );
-  }
 }
