@@ -1155,14 +1155,30 @@ class _CheckoutPageState extends State<CheckoutPage> {
                 },
               ),
               RadioListTile<String>(
-                title: Text('PayPal', style: TextStyle(color: cs.onSurface)),
+                title: Text('JazzCash', style: TextStyle(color: cs.onSurface)),
                 subtitle: Text(
-                  'Pay with PayPal account',
+                  'Pay with JazzCash wallet',
                   style: TextStyle(
                     color: cs.onSurface.withValues(alpha: 0.55),
                   ),
                 ),
-                value: 'PayPal',
+                value: 'JazzCash',
+                groupValue: _selectedPaymentMethod,
+                onChanged: (value) {
+                  if (value != null) {
+                    setState(() => _selectedPaymentMethod = value);
+                  }
+                },
+              ),
+              RadioListTile<String>(
+                title: Text('easyPaisa', style: TextStyle(color: cs.onSurface)),
+                subtitle: Text(
+                  'Pay with easyPaisa wallet',
+                  style: TextStyle(
+                    color: cs.onSurface.withValues(alpha: 0.55),
+                  ),
+                ),
+                value: 'easyPaisa',
                 groupValue: _selectedPaymentMethod,
                 onChanged: (value) {
                   if (value != null) {

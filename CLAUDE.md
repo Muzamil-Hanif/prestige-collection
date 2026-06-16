@@ -77,6 +77,11 @@ Categories are integers matching the backend: `0=All, 1=Perfumes, 2=Watches, 3=W
 ### Checkout Flow
 `CheckoutPage` is a 3-step stepper (address → review → payment). It calls `ApiService.createOrder()` on submission, which uses `normalizeOrderLineForBackend()` to validate items. On success it clears the cart and navigates home.
 
+**Payment Methods:**
+- Credit Card, Debit Card — via SafePay (external payment gateway)
+- JazzCash, easyPaisa — mobile wallet options (processed as standard orders)
+- Cash on Delivery — payment on delivery
+
 ### Profile & Image Upload
 `MyProfilePage` uses `ImagePicker` + `http.MultipartRequest` to upload profile photos to `PATCH /users/profile`. The profile is fetched on `HomePage` init and used to populate the drawer greeting.
 
