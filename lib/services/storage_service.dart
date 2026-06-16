@@ -5,6 +5,7 @@ class StorageService {
   static const String _tokenKey = 'auth_token';
   static const String _userIdKey = 'user_id';
   static const String _userEmailKey = 'user_email';
+  static const String _userRoleKey = 'user_role';
   static const String _cartItemsKey = 'cart_items';
   static const String _refreshTokenKey = 'refresh_token';
   static const String _tokenExpiryKey = 'token_expiry';
@@ -83,6 +84,21 @@ class StorageService {
     return prefs.getString(_userEmailKey);
   }
 
+  static Future<void> saveUserRole(String role) async {
+    final prefs = await SharedPreferences.getInstance();
+    await prefs.setString(_userRoleKey, role);
+  }
+
+  static Future<String?> getUserRole() async {
+    final prefs = await SharedPreferences.getInstance();
+    return prefs.getString(_userRoleKey);
+  }
+
+  static Future<bool> isAdmin() async {
+    final role = await getUserRole();
+    return role == 'admin';
+  }
+
   // Clear all stored data (logout)
   static Future<void> clearAll() async {
     final prefs = await SharedPreferences.getInstance();
@@ -91,6 +107,7 @@ class StorageService {
     await _secureStorage.delete(key: _tokenExpiryKey);
     await prefs.remove(_userIdKey);
     await prefs.remove(_userEmailKey);
+    await prefs.remove(_userRoleKey);
     await prefs.remove(_cartItemsKey);
   }
 

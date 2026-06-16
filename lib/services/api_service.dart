@@ -142,6 +142,7 @@ class ApiService {
         await StorageService.saveToken(authResponse.accessToken);
         await StorageService.saveUserId(authResponse.user.id);
         await StorageService.saveUserEmail(authResponse.user.email);
+        await StorageService.saveUserRole(authResponse.user.role);
 
         // Extract and save token expiry
         try {
@@ -399,6 +400,126 @@ class ApiService {
     }
   }
 
+  static Map<String, dynamic> _productPayload({
+    required String itemName,
+    String? description,
+    required int price,
+    required int category,
+    required String image,
+    int? stock,
+  }) {
+    return {
+      'itemName': itemName,
+      if (description != null && description.isNotEmpty) 'description': description,
+      'price': price,
+      'category': category,
+      'image': image,
+      if (stock != null) 'stock': stock,
+    };
+  }
+
+  static Future<ProductModel> createProduct({
+    required String itemName,
+    String? description,
+    required int price,
+    required int category,
+    required String image,
+    int? stock,
+  }) async {
+    try {
+      _validateUrl('${ApiConfig.baseUrl}${ApiConfig.products}');
+      final httpClient = _getHttpClient();
+      final response = await httpClient.post(
+        Uri.parse('${ApiConfig.baseUrl}${ApiConfig.products}'),
+        headers: await _getHeaders(),
+        body: json.encode(_productPayload(
+          itemName: itemName,
+          description: description,
+          price: price,
+          category: category,
+          image: image,
+          stock: stock,
+        )),
+      ).timeout(const Duration(seconds: 30), onTimeout: () {
+        throw Exception('Request timeout');
+      });
+
+      if (response.statusCode == 200 || response.statusCode == 201) {
+        final data = json.decode(response.body);
+        return ProductModel.fromJson(data);
+      }
+      throw Exception(_handleError(response));
+    } on SocketException catch (e) {
+      throw Exception(_handleNetworkError(e));
+    } catch (e) {
+      debugPrint('Create product error: ${e.toString()}');
+      rethrow;
+    }
+  }
+
+  static Future<ProductModel> updateProduct({
+    required String productId,
+    required String itemName,
+    String? description,
+    required int price,
+    required int category,
+    required String image,
+    int? stock,
+  }) async {
+    try {
+      _validateUrl('${ApiConfig.baseUrl}${ApiConfig.products}/$productId');
+      final httpClient = _getHttpClient();
+      final response = await httpClient.put(
+        Uri.parse('${ApiConfig.baseUrl}${ApiConfig.products}/$productId'),
+        headers: await _getHeaders(),
+        body: json.encode(_productPayload(
+          itemName: itemName,
+          description: description,
+          price: price,
+          category: category,
+          image: image,
+          stock: stock,
+        )),
+      ).timeout(const Duration(seconds: 30), onTimeout: () {
+        throw Exception('Request timeout');
+      });
+
+      if (response.statusCode == 200) {
+        final data = json.decode(response.body);
+        return ProductModel.fromJson(data);
+      }
+      throw Exception(_handleError(response));
+    } on SocketException catch (e) {
+      throw Exception(_handleNetworkError(e));
+    } catch (e) {
+      debugPrint('Update product error: ${e.toString()}');
+      rethrow;
+    }
+  }
+
+  static Future<void> deleteProduct(String productId) async {
+    try {
+      _validateUrl('${ApiConfig.baseUrl}${ApiConfig.products}/$productId');
+      final httpClient = _getHttpClient();
+      final response = await httpClient.delete(
+        Uri.parse('${ApiConfig.baseUrl}${ApiConfig.products}/$productId'),
+        headers: await _getHeaders(),
+      ).timeout(const Duration(seconds: 30), onTimeout: () {
+        throw Exception('Request timeout');
+      });
+
+      if (response.statusCode == 200) {
+        return;
+      }
+      throw Exception(_handleError(response));
+    } on SocketException catch (e) {
+      throw Exception(_handleNetworkError(e));
+    } catch (e) {
+      debugPrint('Delete product error: ${e.toString()}');
+      rethrow;
+    }
+  }
+
   // Get single product
   static Future<ProductModel> getProduct(String productId) async {
     try {
@@ -424,6 +545,87 @@ class ApiService {
     }
   }
 
+  /// Converts MongoDB id shapes (`_id`, `{$oid: ...}`) to a plain string.
+  static String mongoIdToString(dynamic value) {
+    if (value == null) return '';
+    if (value is String) return value;
+    if (value is Map) {
+      final oid = value[r'$oid'] ?? value['\$oid'] ?? value['oid'];
+      if (oid != null) return oid.toString();
+      final id = value['_id'];
+      if (id != null) return mongoIdToString(id);
+    }
+    return value.toString();
+  }
+
+  static double _parseOrderPrice(dynamic price) {
+    if (price is num) return price.toDouble();
+    if (price is String) {
+      return double.tryParse(price.replaceAll('\$', '').replaceAll(',', '')) ?? 0.0;
+    }
+    return 0.0;
+  }
+
+  /// Maps UI cart rows to the exact shape expected by POST /api/orders.
+  static List<Map<String, dynamic>> normalizeOrderLineForBackend(
+    List<Map<String, dynamic>> cartItems,
+  ) {
+    final lines = <Map<String, dynamic>>[];
+
+    for (final item in cartItems) {
+      final product = item['product'] is Map<String, dynamic>
+          ? item['product'] as Map<String, dynamic>
+          : null;
+
+      final productId = mongoIdToString(
+        item['productId'] ?? item['id'] ?? product?['_id'] ?? product?['id'],
+      );
+      if (productId.isEmpty) {
+        throw Exception('Cart item is missing a product id. Remove and re-add the item.');
+      }
+
+      final name = (item['name'] ?? product?['name'] ?? '').toString().trim();
+      if (name.isEmpty) {
+        throw Exception('Cart item is missing a product name. Remove and re-add the item.');
+      }
+
+      final price = _parseOrderPrice(item['price'] ?? product?['price']);
+      if (price <= 0) {
+        throw Exception('Cart item "$name" has an invalid price. Remove and re-add the item.');
+      }
+
+      final quantityRaw = item['quantity'];
+      final quantity = quantityRaw is int
+          ? quantityRaw
+          : int.tryParse(quantityRaw?.toString() ?? '') ?? 0;
+      if (quantity < 1) {
+        throw Exception('Cart item "$name" has invalid quantity.');
+      }
+
+      String? image;
+      final imageRaw = item['image'] ?? product?['image'];
+      if (imageRaw != null && imageRaw.toString().trim().isNotEmpty) {
+        image = imageRaw.toString();
+      } else if (product?['images'] is List && (product!['images'] as List).isNotEmpty) {
+        image = product['images'].first?.toString();
+      }
+
+      lines.add({
+        'productId': productId,
+        'name': name,
+        'price': price,
+        'quantity': quantity,
+        if (image != null && image.isNotEmpty) 'image': image,
+      });
+    }
+
+    if (lines.isEmpty) {
+      throw Exception('Your cart is empty.');
+    }
+
+    return lines;
+  }
+
   // Create order
   static Future<Map<String, dynamic>> createOrder({
     required List<Map<String, dynamic>> items,
@@ -434,13 +636,14 @@ class ApiService {
     required String paymentMethod,
   }) async {
     try {
+      final orderItems = normalizeOrderLineForBackend(items);
       _validateUrl('${ApiConfig.baseUrl}${ApiConfig.orders}');
       final httpClient = _getHttpClient();
       final response = await httpClient.post(
         Uri.parse('${ApiConfig.baseUrl}${ApiConfig.orders}'),
         headers: await _getHeaders(),
         body: json.encode({
-          'items': items,
+          'items': orderItems,
           'totalPrice': totalPrice,
           'shippingCost': shippingCost,
           'grandTotal': grandTotal,
@@ -458,6 +661,8 @@ class ApiService {
       }
     } on SocketException catch (e) {
       throw Exception(_handleNetworkError(e));
+    } on Exception {
+      rethrow;
     } catch (e) {
       debugPrint('Create order error: ${e.toString()}');
       throw Exception('Failed to create order. Please try again.');

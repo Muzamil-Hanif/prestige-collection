@@ -4,37 +4,8 @@ import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 
 import '../services/api_service.dart';
-import '../utils/responsive.dart';
-
-/// Allows optional leading `+` and digits only; `+` must be first if present.
-class _PhoneDigitsPlusFormatter extends TextInputFormatter {
-  @override
-  TextEditingValue formatEditUpdate(
-    TextEditingValue oldValue,
-    TextEditingValue newValue,
-  ) {
-    if (newValue.text.isEmpty) return newValue;
-
-    final buf = StringBuffer();
-    for (var i = 0; i < newValue.text.length; i++) {
-      final c = newValue.text[i];
-      if (c == '+') {
-        if (buf.isEmpty) buf.write(c);
-      } else if (c.compareTo('0') >= 0 && c.compareTo('9') <= 0) {
-        buf.write(c);
-      }
-    }
-    final text = buf.toString();
-    if (text == oldValue.text) return oldValue;
-
-    var offset = newValue.selection.baseOffset;
-    if (offset > text.length) offset = text.length;
-    return TextEditingValue(
-      text: text,
-      selection: TextSelection.collapsed(offset: offset),
-    );
-  }
-}
+import '../services/safepay_service.dart';
+import '../utils/address_validation.dart';
 
 class CheckoutPage extends StatefulWidget {
   final List<Map<String, dynamic>> cartItems;
@@ -62,6 +33,7 @@ class _CheckoutPageState extends State<CheckoutPage> {
   final _zipController = TextEditingController();
 
   String _selectedPaymentMethod = 'Credit Card';
+  String _selectedCountryCode = CountryAddressRules.defaultCountry.code;
   final double _shippingCost = 10.00;
   bool _isPlacingOrder = false;
   int _currentStep = 0;
@@ -85,15 +57,21 @@ class _CheckoutPageState extends State<CheckoutPage> {
 
   double get _grandTotal => widget.totalPrice + _shippingCost;
 
-  static final _phoneE164Pattern = RegExp(r'^\+?[0-9]{7,15}$');
+  CountryAddressRules get _countryRules =>
+      CountryAddressRules.byCode(_selectedCountryCode);
 
-  String? _validatePhone(String? value) {
-    final v = value?.trim() ?? '';
-    if (v.isEmpty) return 'Please enter your phone number';
-    if (!_phoneE164Pattern.hasMatch(v)) {
-      return 'Use 7–15 digits, optional + at the start';
-    }
-    return null;
+  String? _validatePhone(String? value) => _countryRules.validateNationalPhone(value);
+
+  String? _validateZip(String? value) => _countryRules.validateZip(value);
+
+  void _onCountryChanged(String? code) {
+    if (code == null || code == _selectedCountryCode) return;
+    setState(() {
+      _selectedCountryCode = code;
+      if (_addressLiveValidation) {
+        _formKey.currentState?.validate();
+      }
+    });
   }
 
   InputDecoration _fieldDecoration({
@@ -146,13 +124,14 @@ class _CheckoutPageState extends State<CheckoutPage> {
       final shippingAddress = {
         'fullName': _nameController.text.trim(),
         'email': _emailController.text.trim(),
-        'phoneNumber': _phoneController.text.trim(),
+        'phoneNumber': _countryRules.toE164(_phoneController.text),
         'street': _addressController.text.trim(),
         'city': _cityController.text.trim(),
-        'zipCode': _zipController.text.trim(),
+        'zipCode': _countryRules.normalizeZip(_zipController.text),
       };
 
-      await ApiService.createOrder(
+      // Step 1: Create order
+      final orderResponse = await ApiService.createOrder(
         items: widget.cartItems,
         totalPrice: widget.totalPrice,
         shippingCost: _shippingCost,
@@ -161,12 +140,52 @@ class _CheckoutPageState extends State<CheckoutPage> {
         paymentMethod: _selectedPaymentMethod,
       );
 
-      if (mounted) {
-        setState(() {
-          _isPlacingOrder = false;
-        });
+      if (!mounted) return;
 
-        _showOrderSuccessDialog(Theme.of(context).colorScheme);
+      final orderId = orderResponse['_id'] ?? orderResponse['id'];
+
+      // Step 2: Initiate SafePay payment if payment method requires it
+      if (_selectedPaymentMethod == 'Credit Card' ||
+          _selectedPaymentMethod == 'Debit Card') {
+        final paymentInitiation = await SafePayService.initiatePayment(
+          orderId: orderId,
+          customerName: _nameController.text.trim(),
+          customerEmail: _emailController.text.trim(),
+          customerPhone: _countryRules.toE164(_phoneController.text),
+        );
+
+        if (!paymentInitiation.success) {
+          if (mounted) {
+            setState(() {
+              _isPlacingOrder = false;
+            });
+
+            ScaffoldMessenger.of(context).showSnackBar(
+              SnackBar(
+                content: Text(
+                  'Payment initiation failed: ${paymentInitiation.message}',
+                ),
+                backgroundColor: Theme.of(context).colorScheme.error,
+                duration: const Duration(seconds: 3),
+              ),
+            );
+          }
+          return;
+        }
+
+        if (!mounted) return;
+
+        // Step 3: Launch SafePay payment page
+        _showPaymentInProgressDialog(orderId, paymentInitiation.requestId!);
+      } else {
+        // For Cash on Delivery and other methods, show success immediately
+        if (mounted) {
+          setState(() {
+            _isPlacingOrder = false;
+          });
+
+          _showOrderSuccessDialog(Theme.of(context).colorScheme);
+        }
       }
     } catch (e) {
       if (mounted) {
@@ -208,6 +227,119 @@ class _CheckoutPageState extends State<CheckoutPage> {
     if (_currentStep > 0) {
       setState(() => _currentStep--);
     }
+  }
+
+  void _showPaymentInProgressDialog(String orderId, String requestId) {
+    showDialog<void>(
+      context: context,
+      barrierDismissible: false,
+      builder: (dialogContext) {
+        return Dialog(
+          child: Padding(
+            padding: const EdgeInsets.all(24),
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                const CircularProgressIndicator(),
+                const SizedBox(height: 16),
+                const Text(
+                  'Opening SafePay...',
+                  style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold),
+                ),
+                const SizedBox(height: 8),
+                const Text(
+                  'Complete your payment in the opened browser.',
+                  textAlign: TextAlign.center,
+                  style: TextStyle(fontSize: 14, color: Colors.grey),
+                ),
+                const SizedBox(height: 20),
+                Row(
+                  mainAxisAlignment: MainAxisAlignment.spaceEvenly,
+                  children: [
+                    OutlinedButton(
+                      onPressed: () => Navigator.pop(dialogContext),
+                      child: const Text('Cancel'),
+                    ),
+                    ElevatedButton(
+                      onPressed: () {
+                        Navigator.pop(dialogContext);
+                        _verifyAndCompletePayment(orderId, requestId);
+                      },
+                      child: const Text('I Completed Payment'),
+                    ),
+                  ],
+                ),
+              ],
+            ),
+          ),
+        );
+      },
+    );
+  }
+
+  Future<void> _verifyAndCompletePayment(String orderId, String requestId) async {
+    _showPaymentVerificationDialog();
+
+    try {
+      await Future.delayed(const Duration(seconds: 2)); // Give SafePay time to process
+
+      final verificationResult = await SafePayService.verifyPaymentStatus(
+        orderId: orderId,
+        requestId: requestId,
+      );
+
+      if (!mounted) return;
+      Navigator.of(context).pop(); // Close verification dialog
+
+      if (verificationResult.success) {
+        _showOrderSuccessDialog(Theme.of(context).colorScheme);
+      } else {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text(
+              'Payment verification failed: ${verificationResult.message}',
+            ),
+            backgroundColor: Theme.of(context).colorScheme.error,
+            duration: const Duration(seconds: 3),
+          ),
+        );
+        setState(() => _isPlacingOrder = false);
+      }
+    } catch (e) {
+      if (mounted) {
+        Navigator.of(context).pop();
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text('Verification error: ${e.toString()}'),
+            backgroundColor: Theme.of(context).colorScheme.error,
+          ),
+        );
+        setState(() => _isPlacingOrder = false);
+      }
+    }
+  }
+
+  void _showPaymentVerificationDialog() {
+    showDialog<void>(
+      context: context,
+      barrierDismissible: false,
+      builder: (context) => Dialog(
+        child: Padding(
+          padding: const EdgeInsets.all(24),
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              const CircularProgressIndicator(),
+              const SizedBox(height: 16),
+              const Text(
+                'Verifying payment...',
+                style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold),
+              ),
+            ],
+          ),
+        ),
+      ),
+    );
   }
 
   void _showOrderSuccessDialog(ColorScheme cs) {
@@ -718,16 +850,49 @@ class _CheckoutPageState extends State<CheckoutPage> {
               },
             ),
             const SizedBox(height: 14),
+            DropdownButtonFormField<String>(
+              value: _selectedCountryCode,
+              decoration: _fieldDecoration(
+                label: 'Country',
+                icon: Icons.public_outlined,
+              ),
+              dropdownColor: cs.surface,
+              style: TextStyle(color: cs.onSurface),
+              items: CountryAddressRules.supported
+                  .map(
+                    (c) => DropdownMenuItem(
+                      value: c.code,
+                      child: Text(c.name),
+                    ),
+                  )
+                  .toList(),
+              onChanged: _onCountryChanged,
+              validator: (value) =>
+                  value == null || value.isEmpty ? 'Please select a country' : null,
+            ),
+            const SizedBox(height: 14),
             TextFormField(
+              key: ValueKey('phone_$_selectedCountryCode'),
               controller: _phoneController,
               cursorColor: cs.onSurface,
               style: TextStyle(color: cs.onSurface),
               decoration: _fieldDecoration(
                 label: 'Phone Number',
                 icon: Icons.phone_outlined,
+              ).copyWith(
+                prefixText: '${_countryRules.dialCode} ',
+                prefixStyle: TextStyle(
+                  color: cs.onSurface.withValues(alpha: 0.85),
+                  fontWeight: FontWeight.w600,
+                ),
+                hintText: _countryRules.phoneHint,
+                hintStyle: TextStyle(
+                  color: cs.onSurface.withValues(alpha: 0.45),
+                  fontSize: 13,
+                ),
               ),
               keyboardType: TextInputType.phone,
-              inputFormatters: [_PhoneDigitsPlusFormatter()],
+              inputFormatters: _countryRules.phoneInputFormatters(),
               onChanged: (_) {
                 if (_addressLiveValidation) {
                   _formKey.currentState?.validate();
@@ -786,25 +951,33 @@ class _CheckoutPageState extends State<CheckoutPage> {
                 const SizedBox(width: 12),
                 Expanded(
                   child: TextFormField(
+                    key: ValueKey('zip_$_selectedCountryCode'),
                     controller: _zipController,
                     cursorColor: cs.onSurface,
                     style: TextStyle(color: cs.onSurface),
                     decoration: _fieldDecoration(
-                      label: 'ZIP Code',
+                      label: _countryRules.zipLabel,
                       icon: Icons.pin_outlined,
+                    ).copyWith(
+                      hintText: _countryRules.zipHint,
+                      hintStyle: TextStyle(
+                        color: cs.onSurface.withValues(alpha: 0.45),
+                        fontSize: 13,
+                      ),
                     ),
-                    keyboardType: TextInputType.number,
+                    keyboardType: _countryRules.zipAllowsLetters
+                        ? TextInputType.text
+                        : TextInputType.number,
+                    textCapitalization: _countryRules.zipAllowsLetters
+                        ? TextCapitalization.characters
+                        : TextCapitalization.none,
+                    inputFormatters: _countryRules.zipInputFormatters(),
                     onChanged: (_) {
                       if (_addressLiveValidation) {
                         _formKey.currentState?.validate();
                       }
                     },
-                    validator: (value) {
-                      if (value == null || value.isEmpty) {
-                        return 'Please enter ZIP';
-                      }
-                      return null;
-                    },
+                    validator: _validateZip,
                   ),
                 ),
               ],
@@ -949,7 +1122,7 @@ class _CheckoutPageState extends State<CheckoutPage> {
                   style: TextStyle(color: cs.onSurface),
                 ),
                 subtitle: Text(
-                  'Visa, Mastercard, Amex',
+                  'Visa, Mastercard, Amex (via SafePay)',
                   style: TextStyle(
                     color: cs.onSurface.withValues(alpha: 0.55),
                   ),
@@ -968,7 +1141,7 @@ class _CheckoutPageState extends State<CheckoutPage> {
                   style: TextStyle(color: cs.onSurface),
                 ),
                 subtitle: Text(
-                  'Visa, Mastercard',
+                  'Visa, Mastercard (via SafePay)',
                   style: TextStyle(
                     color: cs.onSurface.withValues(alpha: 0.55),
                   ),

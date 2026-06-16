@@ -55,8 +55,7 @@ class _SplashScreenState extends State<SplashScreen> with SingleTickerProviderSt
   }
 
   Future<void> _navigateAfterSplash() async {
-    // Keep splash short for faster develop/test cycles.
-    await Future.delayed(const Duration(milliseconds: 10));
+    await Future.delayed(const Duration(seconds: 10));
     if (!mounted) return;
 
     final isLoggedIn = await StorageService.isLoggedIn();
@@ -118,7 +117,8 @@ class _SplashScreenState extends State<SplashScreen> with SingleTickerProviderSt
                           borderRadius: BorderRadius.circular(20),
                         ),
                         child: SvgPicture.asset(
-                          'assets/images/prestige-men-logo-V5.svg',
+                          'assets/images/prestige-collections-white-nobg.svg',
+                          // 'assets/images/prestige-men-logo-V5.svg',
                           height: 120,
                           width: 120,
                           fit: BoxFit.contain,

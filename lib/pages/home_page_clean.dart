@@ -191,7 +191,7 @@ class _HomePageState extends State<HomePage> {
     }
   if (product.hasNetworkImage) {
       return Image.network(
-        product.imageUrl,
+        product.displayImageUrl,
         fit: fit,
         width: double.infinity,
         height: double.infinity,

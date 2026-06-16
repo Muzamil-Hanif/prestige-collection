@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import '../models/product_model.dart';
 import 'checkout_page.dart';
 
 class MyCart extends StatefulWidget {
@@ -160,7 +161,7 @@ class _MyCartState extends State<MyCart> {
                                 borderRadius: BorderRadius.circular(30),
                                 child: (item['image'] as String).startsWith('http')
                                     ? Image.network(
-                                        item['image'] as String,
+                                        ProductModel.toDisplayImageUrl(item['image'] as String),
                                         width: 60,
                                         height: 60,
                                         fit: BoxFit.cover,

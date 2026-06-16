@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_svg/flutter_svg.dart';
+import 'package:flutter/foundation.dart';
 import 'dart:convert';
 import 'pages/splash_screen.dart';
 import 'pages/sign_in_page.dart';
@@ -70,10 +71,10 @@ class MyApp extends StatelessWidget {
         appBarTheme: const AppBarTheme(
           centerTitle: true,
           elevation: 0,
-          backgroundColor: Colors.transparent,
+          backgroundColor: Colors.white,
           foregroundColor: Colors.black,
           systemOverlayStyle: SystemUiOverlayStyle(
-            statusBarColor: Colors.transparent,
+            statusBarColor: Colors.white,
             statusBarIconBrightness: Brightness.dark,
             statusBarBrightness: Brightness.light,
           ),
@@ -102,7 +103,42 @@ class MyApp extends StatelessWidget {
           ),
         ),
       ),
-      home: const SplashScreen(),
+      home: !kIsWeb ? const SplashScreen() : const _WebHomeGate(),
+    );
+  }
+}
+
+class _WebHomeGate extends StatefulWidget {
+  const _WebHomeGate();
+
+  @override
+  State<_WebHomeGate> createState() => _WebHomeGateState();
+}
+
+class _WebHomeGateState extends State<_WebHomeGate> {
+  @override
+  void initState() {
+    super.initState();
+    _checkLoginAndNavigate();
+  }
+
+  Future<void> _checkLoginAndNavigate() async {
+    final isLoggedIn = await StorageService.isLoggedIn();
+    if (!mounted) return;
+
+    Navigator.of(context).pushReplacement(
+      MaterialPageRoute(
+        builder: (context) => isLoggedIn ? const MainScreen() : const SignInPage(),
+      ),
+    );
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return const Scaffold(
+      body: Center(
+        child: CircularProgressIndicator(),
+      ),
     );
   }
 }
@@ -119,6 +155,7 @@ class _MainScreenState extends State<MainScreen> {
 
   // Shared cart items state
   final List<Map<String, dynamic>> _cartItems = [];
+  bool _isAdmin = false;
 
   int get _cartItemCount {
     return _cartItems.fold<int>(
@@ -131,6 +168,20 @@ class _MainScreenState extends State<MainScreen> {
   void initState() {
     super.initState();
     _loadCart();
+    _loadProfile();
+  }
+
+  Future<void> _loadProfile() async {
+    try {
+      final profile = await ApiService.getProfile();
+      if (!mounted) return;
+      setState(() => _isAdmin = profile.role == 'admin');
+      await StorageService.saveUserRole(profile.role);
+    } catch (_) {
+      final cachedRole = await StorageService.getUserRole();
+      if (!mounted) return;
+      setState(() => _isAdmin = cachedRole == 'admin');
+    }
   }
 
   Future<void> _loadCart() async {
@@ -170,22 +221,31 @@ class _MainScreenState extends State<MainScreen> {
   List<Map<String, dynamic>> _normalizeCartItems(List<Map<String, dynamic>> items) {
     return items.map((item) {
       final normalized = Map<String, dynamic>.from(item);
+      final product = normalized['product'] is Map<String, dynamic>
+          ? normalized['product'] as Map<String, dynamic>
+          : null;
 
-      // If price is missing but product is nested, extract from there
-      if ((normalized['price'] == null || normalized['price'] is! num) &&
-          normalized['product'] is Map<String, dynamic>) {
-        final product = normalized['product'] as Map<String, dynamic>;
-        normalized['price'] = _parsePrice(product['price']);
+      final productId = ApiService.mongoIdToString(
+        normalized['productId'] ?? normalized['id'] ?? product?['_id'] ?? product?['id'],
+      );
+      if (productId.isNotEmpty) {
+        normalized['id'] = productId;
+        normalized['productId'] = productId;
+      }
 
-        // Also flatten other product fields if not already present
+      if (product != null) {
         if (normalized['name'] == null && product['name'] != null) {
           normalized['name'] = product['name'];
         }
-        if (normalized['image'] == null && product['image'] != null) {
-          normalized['image'] = product['image'];
+        if (normalized['image'] == null) {
+          if (product['image'] != null) {
+            normalized['image'] = product['image'];
+          } else if (product['images'] is List && (product['images'] as List).isNotEmpty) {
+            normalized['image'] = product['images'].first;
+          }
         }
-        if (normalized['id'] == null && product['id'] != null) {
-          normalized['id'] = product['id'];
+        if (normalized['price'] == null || normalized['price'] is! num) {
+          normalized['price'] = _parsePrice(product['price']);
         }
       }
 
@@ -198,6 +258,9 @@ class _MainScreenState extends State<MainScreen> {
       if (normalized['price'] == null) {
         normalized['price'] = 0.0;
       }
+
+      normalized.remove('product');
+      normalized.remove('lineTotal');
 
       return normalized;
     }).toList();
@@ -584,10 +647,10 @@ class _MainScreenState extends State<MainScreen> {
     if (!isWideScreen) {
       // Mobile: standard AppBar with menu button and title
       return AppBar(
-        backgroundColor: Colors.transparent,
+        backgroundColor: Colors.white,
         elevation: 0,
         systemOverlayStyle: const SystemUiOverlayStyle(
-          statusBarColor: Colors.transparent,
+          statusBarColor: Colors.white,
           statusBarIconBrightness: Brightness.dark,
           statusBarBrightness: Brightness.light,
         ),
@@ -602,53 +665,65 @@ class _MainScreenState extends State<MainScreen> {
     }
 
     // Tablet/Desktop: Elegant AppBar with logo, hamburger, tabs, and cart
-    return AppBar(
-      backgroundColor: Colors.transparent,
-      elevation: 0,
-      systemOverlayStyle: const SystemUiOverlayStyle(
-        statusBarColor: Colors.transparent,
-        statusBarIconBrightness: Brightness.dark,
-        statusBarBrightness: Brightness.light,
-      ),
-      leadingWidth: 80,
-      leading: Padding(
-        padding: const EdgeInsets.only(left: 24, top: 8, bottom: 8),
-        child: SvgPicture.asset(
-          'assets/images/prestige-men-logo-V4.svg',
-          height: 80,
-          width: 80,
-          fit: BoxFit.contain,
+    return PreferredSize(
+      preferredSize: const Size.fromHeight(280),
+      child: AppBar(
+        backgroundColor: Colors.white,
+        elevation: 0,
+        systemOverlayStyle: const SystemUiOverlayStyle(
+          statusBarColor: Colors.white,
+          statusBarIconBrightness: Brightness.dark,
+          statusBarBrightness: Brightness.light,
         ),
-      ),
-      title: Row(
-        mainAxisAlignment: MainAxisAlignment.center,
-        children: [
-          _buildTabBarItem(0, Icons.home_rounded, 'Home'),
-          const SizedBox(width: 48),
-          _buildTabBarItem(1, Icons.shopping_bag_rounded, 'Products'),
-          const SizedBox(width: 48),
-          _buildTabBarItem(2, Icons.shopping_cart_rounded, 'My Cart'),
-        ],
-      ),
-      actions: [
-        // Cart icon with badge (top right)
-        Padding(
-          padding: const EdgeInsets.only(right: 8),
-          child: Stack(
-            clipBehavior: Clip.none,
-            children: [
-              IconButton(
-                icon: const Icon(Icons.shopping_cart_outlined, color: Colors.black87),
-                onPressed: () {
-                  setState(() => _currentIndex = 2);
-                },
+        leadingWidth: 280,
+        leading: MouseRegion(
+          cursor: SystemMouseCursors.click,
+          child: GestureDetector(
+            onTap: () {
+              final menuItems = NavigationService.getMainMenuItems(context, isAdmin: _isAdmin);
+              _showLeftSidePanel(context, menuItems);
+            },
+            child: Padding(
+              padding: const EdgeInsets.only(left: 24, top: 8, bottom: 8),
+              child: SvgPicture.asset(
+                // 'assets/images/prestige-men-logo-V4.svg',
+                'assets/images/prestige-collections-final.svg',
+                height: 250,
+                width: 250,
+                fit: BoxFit.contain,
               ),
-              if (_cartItemCount > 0)
-                Positioned(
-                  right: 8,
-                  top: 8,
-                  child: Container(
-                    padding: const EdgeInsets.symmetric(horizontal: 5, vertical: 1),
+            ),
+          ),
+        ),
+        title: Row(
+          mainAxisAlignment: MainAxisAlignment.center,
+          children: [
+            _buildTabBarItem(0, Icons.home_rounded, 'Home'),
+            const SizedBox(width: 48),
+            _buildTabBarItem(1, Icons.shopping_bag_rounded, 'Products'),
+            const SizedBox(width: 48),
+            _buildTabBarItem(2, Icons.shopping_cart_rounded, 'My Cart'),
+          ],
+        ),
+        actions: [
+          // Cart icon with badge (top right)
+          Padding(
+            padding: const EdgeInsets.only(right: 8),
+            child: Stack(
+              clipBehavior: Clip.none,
+              children: [
+                IconButton(
+                  icon: const Icon(Icons.shopping_cart_outlined, color: Colors.black87),
+                  onPressed: () {
+                    setState(() => _currentIndex = 2);
+                  },
+                ),
+                if (_cartItemCount > 0)
+                  Positioned(
+                    right: 8,
+                    top: 8,
+                    child: Container(
+                      padding: const EdgeInsets.symmetric(horizontal: 5, vertical: 1),
                     decoration: BoxDecoration(
                       color: Colors.red,
                       borderRadius: BorderRadius.circular(10),
@@ -674,13 +749,14 @@ class _MainScreenState extends State<MainScreen> {
             tooltip: 'Menu',
             onPressed: () {
               // Show sidebar sliding from left
-              final menuItems = NavigationService.getMainMenuItems(context);
+              final menuItems = NavigationService.getMainMenuItems(context, isAdmin: _isAdmin);
               _showLeftSidePanel(context, menuItems);
             },
           ),
         ),
       ],
-      toolbarHeight: 80,
+      toolbarHeight: 120,
+    ),
     );
   }
 
@@ -744,13 +820,14 @@ class _MainScreenState extends State<MainScreen> {
                   // ),
                 ),
                 child: Row(
-                  mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                  mainAxisAlignment: MainAxisAlignment.center,
                   children: [
                     // Logo
                     SvgPicture.asset(
-                      'assets/images/prestige-men-logo-V5.svg',
-                      height: 80, 
-                      width: 80,
+                      'assets/images/prestige-collections-white-nobg.svg',
+                      // 'assets/images/prestige-men-logo-V5.svg',
+                      height: 120,
+                      width: 120,
                       fit: BoxFit.contain,
                     ),
                   ],
@@ -863,7 +940,7 @@ class _MainScreenState extends State<MainScreen> {
   @override
   Widget build(BuildContext context) {
     final isWideScreen = Responsive.isTablet(context) || Responsive.isDesktop(context);
-    final menuItems = NavigationService.getMainMenuItems(context);
+    final menuItems = NavigationService.getMainMenuItems(context, isAdmin: _isAdmin);
 
     if (isWideScreen) {
       // Web: Hamburger menu only (no permanent sidebar)

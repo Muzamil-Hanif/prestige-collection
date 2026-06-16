@@ -1,13 +1,31 @@
 import 'package:flutter/material.dart';
 import '../models/menu_item_model.dart';
 import '../pages/about_page.dart';
+import '../pages/admin_products_page.dart';
 import '../pages/contact_page.dart';
 import '../pages/settings_page.dart';
 import '../pages/sign_in_page.dart';
 import 'storage_service.dart';
 
 class NavigationService {
-  static List<MenuItemConfig> getMainMenuItems(BuildContext context) => [
+  static List<MenuItemConfig> getMainMenuItems(
+    BuildContext context, {
+    bool isAdmin = false,
+  }) => [
+    if (isAdmin)
+      MenuItemConfig(
+        id: 'manage_products',
+        label: 'Manage Products',
+        icon: Icons.inventory_2_outlined,
+        onTap: () {
+          Navigator.pop(context);
+          Navigator.push(
+            context,
+            MaterialPageRoute(builder: (context) => const AdminProductsPage()),
+          );
+        },
+        requiresAuth: true,
+      ),
     MenuItemConfig(
       id: 'my_orders',
       label: 'My Orders',
@@ -122,18 +140,19 @@ class NavigationService {
               Navigator.pop(context);
               // Clear stored authentication data
               await StorageService.clearAll();
+              // Show logout message before navigating
+              ScaffoldMessenger.of(context).showSnackBar(
+                const SnackBar(
+                  content: Text('Logged out successfully'),
+                  duration: Duration(seconds: 2),
+                ),
+              );
               // Navigate back to sign in page
               Navigator.of(context).pushAndRemoveUntil(
                 MaterialPageRoute(
                   builder: (context) => const SignInPage(),
                 ),
                 (route) => false,
-              );
-              ScaffoldMessenger.of(context).showSnackBar(
-                const SnackBar(
-                  content: Text('Logged out successfully'),
-                  duration: Duration(seconds: 3),
-                ),
               );
             },
             child: const Text(

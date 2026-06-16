@@ -86,13 +86,14 @@ class _SignInPageState extends State<SignInPage> {
                 // Logo
                 Center(
                   child: SvgPicture.asset(
-                    'assets/images/prestige-men-logo-V4.svg',
+                    'assets/images/prestige-collections-final.svg',
+                    // 'assets/images/prestige-men-logo-V4.svg',
                     height: Responsive.logoSize(context),
                     width: Responsive.logoSize(context),
                     fit: BoxFit.contain,
                   ),
                 ),
-                const SizedBox(height: 32),
+                const SizedBox(height: 22),
                 // Title
                 const Text(
                   'Welcome',

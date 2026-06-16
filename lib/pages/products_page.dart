@@ -1,4 +1,5 @@
 import 'dart:async';
+import 'package:flutter/foundation.dart' show kIsWeb;
 import 'package:flutter/material.dart';
 import '../services/api_service.dart';
 import '../models/product_model.dart';
@@ -168,7 +169,7 @@ class _ProductsPageState extends State<ProductsPage> with SingleTickerProviderSt
 
     if (product.hasNetworkImage) {
       return Image.network(
-        product.imageUrl,
+        product.displayImageUrl,
         width: 80,
         height: 80,
         fit: BoxFit.cover,
@@ -193,7 +194,7 @@ class _ProductsPageState extends State<ProductsPage> with SingleTickerProviderSt
     }
     if (imagePath.startsWith('http://') || imagePath.startsWith('https://')) {
       return Image.network(
-        imagePath,
+        ProductModel.toDisplayImageUrl(imagePath),
         fit: fit,
         errorBuilder: (context, error, stackTrace) =>
             Icon(fallbackIcon, size: 40, color: Theme.of(context).colorScheme.secondary),
@@ -270,12 +271,218 @@ class _ProductsPageState extends State<ProductsPage> with SingleTickerProviderSt
     );
   }
 
+  List<Widget> _productDetailsContent({
+    required ProductModel product,
+    required ColorScheme cs,
+    required List<String> images,
+    required IconData fallbackIcon,
+    required PageController pageController,
+    required int activeImage,
+    required void Function(void Function()) setModalState,
+    required bool showDragHandle,
+  }) {
+    return [
+      if (showDragHandle) ...[
+        Center(
+          child: Container(
+            width: 40,
+            height: 4,
+            decoration: BoxDecoration(
+              color: Colors.white24,
+              borderRadius: BorderRadius.circular(999),
+            ),
+          ),
+        ),
+        const SizedBox(height: 14),
+      ],
+      Text(
+        product.name,
+        style: TextStyle(
+          color: cs.onSurface,
+          fontWeight: FontWeight.bold,
+          fontSize: 24,
+        ),
+      ),
+      const SizedBox(height: 6),
+      Text(
+        product.description ?? 'No description available',
+        style: TextStyle(color: cs.onSurface.withValues(alpha: 0.75)),
+      ),
+      const SizedBox(height: 16),
+      AspectRatio(
+        aspectRatio: 1.2,
+        child: Container(
+          decoration: BoxDecoration(
+            color: cs.primaryContainer,
+            borderRadius: BorderRadius.circular(16),
+          ),
+          child: images.isEmpty
+              ? Center(child: Icon(fallbackIcon, color: cs.secondary, size: 50))
+              : Stack(
+                  children: [
+                    PageView.builder(
+                      controller: pageController,
+                      itemCount: images.length,
+                      onPageChanged: (index) => setModalState(() => activeImage = index),
+                      itemBuilder: (context, index) {
+                        return GestureDetector(
+                          onTap: () => _openImageViewer(images, index, fallbackIcon),
+                          child: Padding(
+                            padding: const EdgeInsets.all(10),
+                            child: ClipRRect(
+                              borderRadius: BorderRadius.circular(12),
+                              child: _buildImageByPath(
+                                images[index],
+                                fallbackIcon,
+                                fit: BoxFit.contain,
+                              ),
+                            ),
+                          ),
+                        );
+                      },
+                    ),
+                    if (images.length > 1)
+                      Positioned(
+                        bottom: 10,
+                        left: 0,
+                        right: 0,
+                        child: Row(
+                          mainAxisAlignment: MainAxisAlignment.center,
+                          children: List.generate(
+                            images.length,
+                            (index) => AnimatedContainer(
+                              duration: const Duration(milliseconds: 180),
+                              margin: const EdgeInsets.symmetric(horizontal: 3),
+                              width: activeImage == index ? 18 : 8,
+                              height: 8,
+                              decoration: BoxDecoration(
+                                color: activeImage == index ? cs.secondary : Colors.white38,
+                                borderRadius: BorderRadius.circular(999),
+                              ),
+                            ),
+                          ),
+                        ),
+                      ),
+                  ],
+                ),
+        ),
+      ),
+      const SizedBox(height: 16),
+      Wrap(
+        spacing: 10,
+        runSpacing: 10,
+        children: [
+          _buildMetaChip('Price', product.formattedPrice, cs),
+          _buildMetaChip(
+            'Stock',
+            product.stock > 0 ? '${product.stock} available' : 'Out of stock',
+            cs,
+          ),
+          _buildMetaChip('Category', product.categoryLabel, cs),
+        ],
+      ),
+      const SizedBox(height: 18),
+      Text(
+        'Specifications',
+        style: TextStyle(
+          color: cs.onSurface,
+          fontSize: 18,
+          fontWeight: FontWeight.w700,
+        ),
+      ),
+      const SizedBox(height: 10),
+      if (product.specifications == null || product.specifications!.isEmpty)
+        Text(
+          'No specifications available.',
+          style: TextStyle(color: cs.onSurface.withValues(alpha: 0.75)),
+        )
+      else
+        ...product.specifications!.entries.where((e) => e.key.toLowerCase() != 'category').map(
+              (e) => Padding(
+                padding: const EdgeInsets.only(bottom: 8),
+                child: Row(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Expanded(
+                      child: Text(
+                        _toTitleCase(e.key),
+                        style: TextStyle(
+                          color: cs.onSurface.withValues(alpha: 0.8),
+                          fontWeight: FontWeight.w600,
+                        ),
+                      ),
+                    ),
+                    Expanded(
+                      child: Text(
+                        '${e.value}',
+                        textAlign: TextAlign.right,
+                        style: TextStyle(color: cs.onSurface),
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+            ),
+    ];
+  }
+
   void _openProductDetails(ProductModel product) {
     final cs = Theme.of(context).colorScheme;
     final fallbackIcon = _iconForCategoryCode(product.category);
     final images = product.images.isNotEmpty
         ? product.images.where((e) => e.trim().isNotEmpty).toList()
         : (product.imageUrl.isNotEmpty ? <String>[product.imageUrl] : <String>[]);
+
+    if (kIsWeb) {
+      showDialog<void>(
+        context: context,
+        barrierDismissible: true,
+        builder: (dialogContext) {
+          final pageController = PageController();
+          var activeImage = 0;
+          return Dialog(
+            backgroundColor: cs.surface,
+            insetPadding: const EdgeInsets.symmetric(horizontal: 24, vertical: 48),
+            shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
+            child: ConstrainedBox(
+              constraints: const BoxConstraints(maxWidth: 600, maxHeight: 720),
+              child: StatefulBuilder(
+                builder: (context, setModalState) {
+                  return Column(
+                    mainAxisSize: MainAxisSize.min,
+                    children: [
+                      Align(
+                        alignment: Alignment.centerRight,
+                        child: IconButton(
+                          icon: Icon(Icons.close, color: cs.onSurface),
+                          onPressed: () => Navigator.of(dialogContext).pop(),
+                        ),
+                      ),
+                      Flexible(
+                        child: ListView(
+                          padding: const EdgeInsets.fromLTRB(16, 0, 16, 24),
+                          children: _productDetailsContent(
+                            product: product,
+                            cs: cs,
+                            images: images,
+                            fallbackIcon: fallbackIcon,
+                            pageController: pageController,
+                            activeImage: activeImage,
+                            setModalState: setModalState,
+                            showDragHandle: false,
+                          ),
+                        ),
+                      ),
+                    ],
+                  );
+                },
+              ),
+            ),
+          );
+        },
+      );
+      return;
+    }
 
     showModalBottomSheet<void>(
       context: context,
@@ -300,149 +507,16 @@ class _ProductsPageState extends State<ProductsPage> with SingleTickerProviderSt
                   child: ListView(
                     controller: scrollController,
                     padding: const EdgeInsets.fromLTRB(16, 10, 16, 24),
-                    children: [
-                      Center(
-                        child: Container(
-                          width: 40,
-                          height: 4,
-                          decoration: BoxDecoration(
-                            color: Colors.white24,
-                            borderRadius: BorderRadius.circular(999),
-                          ),
-                        ),
-                      ),
-                      const SizedBox(height: 14),
-                      Text(
-                        product.name,
-                        style: TextStyle(
-                          color: cs.onSurface,
-                          fontWeight: FontWeight.bold,
-                          fontSize: 24,
-                        ),
-                      ),
-                      const SizedBox(height: 6),
-                      Text(
-                        product.description ?? 'No description available',
-                        style: TextStyle(color: cs.onSurface.withValues(alpha: 0.75)),
-                      ),
-                      const SizedBox(height: 16),
-                      AspectRatio(
-                        aspectRatio: 1.2,
-                        child: Container(
-                        decoration: BoxDecoration(
-                          color: cs.primaryContainer,
-                          borderRadius: BorderRadius.circular(16),
-                        ),
-                        child: images.isEmpty
-                            ? Center(child: Icon(fallbackIcon, color: cs.secondary, size: 50))
-                            : Stack(
-                                children: [
-                                  PageView.builder(
-                                    controller: pageController,
-                                    itemCount: images.length,
-                                    onPageChanged: (index) => setModalState(() => activeImage = index),
-                                    itemBuilder: (context, index) {
-                                      return GestureDetector(
-                                        onTap: () => _openImageViewer(images, index, fallbackIcon),
-                                        child: Padding(
-                                          padding: const EdgeInsets.all(10),
-                                          child: ClipRRect(
-                                            borderRadius: BorderRadius.circular(12),
-                                            child: _buildImageByPath(
-                                              images[index],
-                                              fallbackIcon,
-                                              fit: BoxFit.contain,
-                                            ),
-                                          ),
-                                        ),
-                                      );
-                                    },
-                                  ),
-                                  if (images.length > 1)
-                                    Positioned(
-                                      bottom: 10,
-                                      left: 0,
-                                      right: 0,
-                                      child: Row(
-                                        mainAxisAlignment: MainAxisAlignment.center,
-                                        children: List.generate(
-                                          images.length,
-                                          (index) => AnimatedContainer(
-                                            duration: const Duration(milliseconds: 180),
-                                            margin: const EdgeInsets.symmetric(horizontal: 3),
-                                            width: activeImage == index ? 18 : 8,
-                                            height: 8,
-                                            decoration: BoxDecoration(
-                                              color: activeImage == index ? cs.secondary : Colors.white38,
-                                              borderRadius: BorderRadius.circular(999),
-                                            ),
-                                          ),
-                                        ),
-                                      ),
-                                    ),
-                                ],
-                              ),
-                        ),
-                      ),
-                      const SizedBox(height: 16),
-                      Wrap(
-                        spacing: 10,
-                        runSpacing: 10,
-                        children: [
-                          _buildMetaChip('Price', product.formattedPrice, cs),
-                          _buildMetaChip(
-                            'Stock',
-                            product.stock > 0 ? '${product.stock} available' : 'Out of stock',
-                            cs,
-                          ),
-                          _buildMetaChip('Category', product.categoryLabel, cs),
-                        ],
-                      ),
-                      const SizedBox(height: 18),
-                      Text(
-                        'Specifications',
-                        style: TextStyle(
-                          color: cs.onSurface,
-                          fontSize: 18,
-                          fontWeight: FontWeight.w700,
-                        ),
-                      ),
-                      const SizedBox(height: 10),
-                      if (product.specifications == null || product.specifications!.isEmpty)
-                        Text(
-                          'No specifications available.',
-                          style: TextStyle(color: cs.onSurface.withValues(alpha: 0.75)),
-                        )
-                      else
-                        ...product.specifications!.entries
-                            .where((e) => e.key.toLowerCase() != 'category')
-                            .map(
-                          (e) => Padding(
-                            padding: const EdgeInsets.only(bottom: 8),
-                            child: Row(
-                              crossAxisAlignment: CrossAxisAlignment.start,
-                              children: [
-                                Expanded(
-                                  child: Text(
-                                    _toTitleCase(e.key),
-                                    style: TextStyle(
-                                      color: cs.onSurface.withValues(alpha: 0.8),
-                                      fontWeight: FontWeight.w600,
-                                    ),
-                                  ),
-                                ),
-                                Expanded(
-                                  child: Text(
-                                    '${e.value}',
-                                    textAlign: TextAlign.right,
-                                    style: TextStyle(color: cs.onSurface),
-                                  ),
-                                ),
-                              ],
-                            ),
-                          ),
-                        ),
-                    ],
+                    children: _productDetailsContent(
+                      product: product,
+                      cs: cs,
+                      images: images,
+                      fallbackIcon: fallbackIcon,
+                      pageController: pageController,
+                      activeImage: activeImage,
+                      setModalState: setModalState,
+                      showDragHandle: true,
+                    ),
                   ),
                 );
               },

@@ -75,7 +75,11 @@ class ProductModel {
     return '';
   }
 
-  bool get hasNetworkImage => imageUrl.startsWith('http://') || imageUrl.startsWith('https://');
+  /// URL suitable for Image.network (uses backend proxy for external images).
+  String get displayImageUrl => toDisplayImageUrl(imageUrl);
+
+  bool get hasNetworkImage =>
+      imageUrl.startsWith('http://') || imageUrl.startsWith('https://');
 
   static const Map<int, String> categoryLabels = {
     0: 'All Items',
@@ -92,14 +96,26 @@ class ProductModel {
     return '\$${price.toStringAsFixed(2)}';
   }
 
+  static String toDisplayImageUrl(String rawPath) {
+    final normalized = _normalizeImagePath(rawPath);
+    if (normalized.isEmpty || normalized.startsWith('assets/')) {
+      return normalized;
+    }
+    if (!normalized.startsWith('http://') && !normalized.startsWith('https://')) {
+      return normalized;
+    }
+
+    return '${ApiConfig.baseUrl}/products/images/proxy?url=${Uri.encodeComponent(normalized)}';
+  }
+
   static String _normalizeImagePath(String rawPath) {
-    final path = rawPath.trim();
+    final path = _sanitizeImageUrl(rawPath.trim());
     if (path.isEmpty) return '';
 
     // Some records store Google Images wrapper links (imgres). Extract direct URL.
     final extractedGoogleImage = _extractGoogleImgResUrl(path);
     if (extractedGoogleImage != null && extractedGoogleImage.isNotEmpty) {
-      return extractedGoogleImage;
+      return _sanitizeImageUrl(extractedGoogleImage);
     }
 
     if (path.startsWith('http://') || path.startsWith('https://')) {
@@ -115,6 +131,18 @@ class ProductModel {
       return '$origin$path';
     }
     return '$origin/$path';
+  }
+
+  static String _sanitizeImageUrl(String url) {
+    var sanitized = url
+        .replaceAll('&amp;', '&')
+        .replaceAll('&quot;', '"')
+        .replaceAll('&#39;', "'")
+        .trim();
+    if (sanitized.startsWith('http://')) {
+      sanitized = 'https://${sanitized.substring('http://'.length)}';
+    }
+    return sanitized;
   }
 
   static String? _extractGoogleImgResUrl(String url) {

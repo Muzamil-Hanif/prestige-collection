@@ -99,7 +99,8 @@ class _SignUpPageState extends State<SignUpPage> {
                 // Logo
                 Center(
                   child: SvgPicture.asset(
-                    'assets/images/prestige-men-logo-V4.svg',
+                    // 'assets/images/prestige-men-logo-V4.svg',
+                    'assets/images/prestige-collections-final.svg',
                     height: Responsive.logoSize(context),
                     width: Responsive.logoSize(context),
                     fit: BoxFit.contain,
