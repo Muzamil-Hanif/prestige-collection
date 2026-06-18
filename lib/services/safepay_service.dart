@@ -10,12 +10,14 @@ class SafePaymentResult {
   final String? transactionId;
   final String? message;
   final String? requestId;
+  final String? redirectUrl;
 
   SafePaymentResult({
     required this.success,
     this.transactionId,
     this.message,
     this.requestId,
+    this.redirectUrl,
   });
 }
 
@@ -44,15 +46,23 @@ class SafePayService {
 
       if (response.statusCode == 200 || response.statusCode == 201) {
         final data = jsonDecode(response.body);
+        final redirectUrl = data['redirectUrl'] as String?;
+        if (redirectUrl == null || redirectUrl.isEmpty) {
+          return SafePaymentResult(
+            success: false,
+            message: 'Payment gateway did not return a checkout link',
+          );
+        }
         return SafePaymentResult(
           success: true,
           requestId: data['requestId'] as String?,
+          redirectUrl: redirectUrl,
           message: 'Payment initiated successfully',
         );
       } else {
         return SafePaymentResult(
           success: false,
-          message: 'Failed to initiate payment',
+          message: _extractErrorMessage(response.body, 'Failed to initiate payment'),
         );
       }
     } catch (e) {
@@ -61,6 +71,39 @@ class SafePayService {
         success: false,
         message: 'Failed to initiate payment: $e',
       );
+    }
+  }
+
+  /// Pulls the backend's actual error message out of a non-2xx response
+  /// body (NestJS's default error shape is `{statusCode, message, error}`)
+  /// instead of showing a generic string that hides the real cause.
+  static String _extractErrorMessage(String body, String fallback) {
+    try {
+      final decoded = jsonDecode(body);
+      final message = decoded is Map ? decoded['message'] : null;
+      if (message is String && message.isNotEmpty) return message;
+      if (message is List && message.isNotEmpty) return message.join(', ');
+    } catch (_) {
+      // Body wasn't JSON — fall through to the generic message.
+    }
+    return fallback;
+  }
+
+  /// Whether the backend actually has SafePay configured. Used by the
+  /// checkout page to disable Credit/Debit Card instead of letting the
+  /// user pick a payment method that's guaranteed to fail at submit time.
+  static Future<bool> isCardPaymentAvailable() async {
+    try {
+      final url = Uri.parse('${ApiConfig.baseUrl}$_paymentEndpoint/config');
+      final response = await http.get(url).timeout(const Duration(seconds: 5));
+      if (response.statusCode == 200) {
+        final data = jsonDecode(response.body);
+        return data['cardPaymentsEnabled'] == true;
+      }
+      return false;
+    } catch (e) {
+      debugPrint('SafePay config check error: $e');
+      return false;
     }
   }
 
@@ -110,7 +153,7 @@ class SafePayService {
       } else {
         return SafePaymentResult(
           success: false,
-          message: 'Failed to verify payment',
+          message: _extractErrorMessage(response.body, 'Failed to verify payment'),
         );
       }
     } catch (e) {

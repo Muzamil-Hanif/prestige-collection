@@ -1,11 +1,13 @@
 import 'package:flutter/material.dart';
 import '../models/menu_item_model.dart';
 import '../pages/about_page.dart';
+import '../pages/admin_orders_page.dart';
 import '../pages/admin_products_page.dart';
 import '../pages/contact_page.dart';
+import '../pages/my_orders_page.dart';
 import '../pages/settings_page.dart';
-import '../pages/sign_in_page.dart';
-import 'storage_service.dart';
+import 'api_service.dart';
+import 'session_manager.dart';
 
 class NavigationService {
   static List<MenuItemConfig> getMainMenuItems(
@@ -26,17 +28,29 @@ class NavigationService {
         },
         requiresAuth: true,
       ),
+    if (isAdmin)
+      MenuItemConfig(
+        id: 'manage_orders',
+        label: 'Manage Orders',
+        icon: Icons.assignment_outlined,
+        onTap: () {
+          Navigator.pop(context);
+          Navigator.push(
+            context,
+            MaterialPageRoute(builder: (context) => const AdminOrdersPage()),
+          );
+        },
+        requiresAuth: true,
+      ),
     MenuItemConfig(
       id: 'my_orders',
       label: 'My Orders',
       icon: Icons.receipt_long,
       onTap: () {
         Navigator.pop(context);
-        ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(
-            content: Text('Orders page coming soon'),
-            duration: Duration(seconds: 3),
-          ),
+        Navigator.push(
+          context,
+          MaterialPageRoute(builder: (context) => const MyOrdersPage()),
         );
       },
       requiresAuth: true,
@@ -136,23 +150,16 @@ class NavigationService {
             child: const Text('Cancel'),
           ),
           TextButton(
-            onPressed: () async {
+            onPressed: () {
+              // Close the dialog first — its context becomes invalid right
+              // after this, so nothing below may rely on it.
               Navigator.pop(context);
-              // Clear stored authentication data
-              await StorageService.clearAll();
-              // Show logout message before navigating
-              ScaffoldMessenger.of(context).showSnackBar(
-                const SnackBar(
-                  content: Text('Logged out successfully'),
-                  duration: Duration(seconds: 2),
-                ),
-              );
-              // Navigate back to sign in page
-              Navigator.of(context).pushAndRemoveUntil(
-                MaterialPageRoute(
-                  builder: (context) => const SignInPage(),
-                ),
-                (route) => false,
+              // Notify backend and clear local credentials, then redirect
+              // via the root navigator (SessionManager doesn't depend on
+              // any screen/dialog context, so it can't end up stuck on a
+              // blank screen).
+              ApiService.logout().whenComplete(
+                () => SessionManager.forceLogout(message: 'Logged out successfully'),
               );
             },
             child: const Text(

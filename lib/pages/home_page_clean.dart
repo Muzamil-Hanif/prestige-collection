@@ -38,7 +38,7 @@ class _HomePageState extends State<HomePage> {
     },
     {
       'title': 'Fresh Drops in Perfumes',
-      'subtitle': 'Signature fragrances curated for Prestige Men.',
+      'subtitle': 'Signature fragrances curated for Prestige Collection.',
       'icon': Icons.spa_rounded,
       'start': Color(0xFF23395B),
       'end': Color(0xFF3A5A8F),

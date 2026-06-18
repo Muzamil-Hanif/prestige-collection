@@ -1,5 +1,5 @@
+import 'dart:async';
 import 'dart:convert';
-import 'dart:io';
 import 'package:flutter/foundation.dart';
 import 'package:http/http.dart' as http;
 import 'package:jwt_decoder/jwt_decoder.dart';
@@ -7,7 +7,13 @@ import '../models/user_model.dart';
 import '../models/product_model.dart';
 import '../models/auth_response_model.dart';
 import 'api_config.dart';
+import 'session_manager.dart';
 import 'storage_service.dart';
+
+// dart:io is unavailable on web; import conditionally so SocketException
+// is available on native platforms but the file still compiles on web.
+import 'socket_exception_stub.dart'
+    if (dart.library.io) 'dart:io' show SocketException;
 
 class ApiService {
   static http.Client? _httpClient;
@@ -72,7 +78,11 @@ class ApiService {
         if (_isTokenValid(token)) {
           headers['Authorization'] = 'Bearer $token';
         } else {
-          await StorageService.clearAll();
+          // Don't just throw — redirect to sign-in immediately so the user
+          // isn't left on a stale screen until they manually refresh.
+          await SessionManager.forceLogout(
+            message: 'Session expired. Please login again.',
+          );
           throw Exception('Session expired. Please login again.');
         }
       }
@@ -83,7 +93,23 @@ class ApiService {
 
   /// Handle API errors with generic user-facing messages
   /// Logs detailed errors internally for debugging
-  static String _handleError(http.Response response) {
+  ///
+  /// [isAuthenticatedRequest] should be false for endpoints that don't send
+  /// a token (login, register, public product listing) — a 401 there means
+  /// "wrong credentials", not "session expired", so it must not trigger a
+  /// forced redirect to sign-in.
+  static String _handleError(
+    http.Response response, {
+    bool isAuthenticatedRequest = true,
+  }) {
+    if (isAuthenticatedRequest && response.statusCode == 401) {
+      // Backend rejected the token (revoked/invalid) even though it looked
+      // valid locally — redirect immediately instead of leaving the user
+      // stuck on a stale screen.
+      unawaited(SessionManager.forceLogout(
+        message: 'Session expired. Please login again.',
+      ));
+    }
     try {
       final errorData = json.decode(response.body);
       // Log detailed error internally for debugging
@@ -113,58 +139,119 @@ class ApiService {
     return 'Connection error. Please check your internet and try again.';
   }
 
-  // Authentication: Login
+  // Authentication: Login — retries once with a fresh client on transient failure.
   static Future<AuthResponseModel> login(String email, String password) async {
+    return _loginAttempt(email, password, isRetry: false);
+  }
+
+  static Future<AuthResponseModel> _loginAttempt(
+    String email,
+    String password, {
+    required bool isRetry,
+  }) async {
+    bool isTransientError = false;
     try {
       _validateUrl('${ApiConfig.baseUrl}${ApiConfig.login}');
-      final httpClient = _getHttpClient();
-      final response = await httpClient.post(
-        Uri.parse('${ApiConfig.baseUrl}${ApiConfig.login}'),
-        headers: await _getHeaders(includeAuth: false),
-        body: json.encode({
-          'email': email,
-          'password': password,
-        }),
-      ).timeout(const Duration(seconds: 30), onTimeout: () {
-        throw Exception('Request timeout');
-      });
+      // Always use a fresh client for login so a stale/broken singleton never
+      // blocks the user. The client is lightweight and not reused here.
+      final httpClient = http.Client();
+      late http.Response response;
+      try {
+        response = await httpClient
+            .post(
+              Uri.parse('${ApiConfig.baseUrl}${ApiConfig.login}'),
+              headers: const {'Content-Type': 'application/json'},
+              body: json.encode({'email': email, 'password': password}),
+            )
+            .timeout(const Duration(seconds: 15), onTimeout: () {
+          throw TimeoutException('Login request timed out');
+        });
+      } finally {
+        httpClient.close();
+      }
 
       if (response.statusCode == 200 || response.statusCode == 201) {
         final data = json.decode(response.body);
         final authResponse = AuthResponseModel.fromJson(data);
 
-        // Validate token before saving
+        if (authResponse.accessToken.isEmpty) {
+          throw Exception('No token received from server. Please try again.');
+        }
         if (!_isTokenValid(authResponse.accessToken)) {
-          throw Exception('Invalid or expired token received');
+          throw Exception('Received an invalid session token. Please try again.');
         }
 
-        // Save token and user info
-        await StorageService.saveToken(authResponse.accessToken);
-        await StorageService.saveUserId(authResponse.user.id);
-        await StorageService.saveUserEmail(authResponse.user.email);
-        await StorageService.saveUserRole(authResponse.user.role);
-
-        // Extract and save token expiry
+        // Persist credentials; wrap separately so a storage hiccup doesn't
+        // report a fake "login failed" when the server already accepted the creds.
         try {
-          final decodedToken = JwtDecoder.decode(authResponse.accessToken);
-          final exp = decodedToken['exp'] as int?;
-          if (exp != null) {
-            await StorageService.saveTokenExpiry(exp * 1000);
+          await StorageService.saveToken(authResponse.accessToken);
+          await StorageService.saveUserId(authResponse.user.id);
+          await StorageService.saveUserEmail(authResponse.user.email);
+          await StorageService.saveUserRole(authResponse.user.role);
+          try {
+            final decoded = JwtDecoder.decode(authResponse.accessToken);
+            final exp = decoded['exp'] as int?;
+            if (exp != null) await StorageService.saveTokenExpiry(exp * 1000);
+          } catch (_) {}
+        } catch (storageError) {
+          debugPrint('Storage error after login: $storageError');
+          // Storage failed but login itself succeeded; retry storage once.
+          if (!isRetry) {
+            return _loginAttempt(email, password, isRetry: true);
           }
-        } catch (e) {
-          debugPrint('Error extracting token expiry: ${e.toString()}');
+          // On second storage failure, still let the user in — the session
+          // will last until the app restarts and re-prompts for login.
+          debugPrint('Persistent storage failure; session will not survive restart.');
         }
 
         return authResponse;
       } else {
-        throw Exception(_handleError(response));
+        // Server explicitly rejected the request — do not retry.
+        throw Exception(_handleError(response, isAuthenticatedRequest: false));
       }
     } on SocketException catch (e) {
+      isTransientError = true;
+      if (!isRetry) {
+        debugPrint('Network error on login attempt 1, retrying: $e');
+        _httpClient = null; // reset singleton so retry gets a fresh pool
+        return _loginAttempt(email, password, isRetry: true);
+      }
       throw Exception(_handleNetworkError(e));
+    } on TimeoutException catch (e) {
+      isTransientError = true;
+      if (!isRetry) {
+        debugPrint('Timeout on login attempt 1, retrying: $e');
+        _httpClient = null;
+        return _loginAttempt(email, password, isRetry: true);
+      }
+      throw Exception('Connection timed out. Please check your internet and try again.');
     } catch (e) {
-      debugPrint('Login error: ${e.toString()}');
+      final msg = e.toString();
+      debugPrint('Login error (retry=$isRetry): $msg');
+      // Only retry unknown errors once, not server-side auth rejections.
+      if (!isRetry && !isTransientError && !_isAuthRejection(msg)) {
+        _httpClient = null;
+        return _loginAttempt(email, password, isRetry: true);
+      }
+      // Preserve the error message if it's already descriptive enough.
+      if (msg.contains('Exception: ') &&
+          !msg.contains('Login failed') &&
+          !msg.contains('null')) {
+        rethrow;
+      }
       throw Exception('Login failed. Please try again.');
     }
+  }
+
+  /// Returns true when the error clearly came from server-side credential
+  /// rejection (not a transient network issue), so we don't retry it.
+  static bool _isAuthRejection(String message) {
+    final lower = message.toLowerCase();
+    return lower.contains('invalid credentials') ||
+        lower.contains('unauthorized') ||
+        lower.contains('wrong password') ||
+        lower.contains('user not found') ||
+        lower.contains('401');
   }
 
   // Authentication: Register
@@ -193,7 +280,7 @@ class ApiService {
       if (response.statusCode == 200 || response.statusCode == 201) {
         return await login(email, password);
       } else {
-        throw Exception(_handleError(response));
+        throw Exception(_handleError(response, isAuthenticatedRequest: false));
       }
     } on SocketException catch (e) {
       throw Exception(_handleNetworkError(e));
@@ -390,7 +477,7 @@ class ApiService {
             .map((product) => ProductModel.fromJson(product))
             .toList();
       } else {
-        throw Exception(_handleError(response));
+        throw Exception(_handleError(response, isAuthenticatedRequest: false));
       }
     } on SocketException catch (e) {
       throw Exception(_handleNetworkError(e));
@@ -535,7 +622,7 @@ class ApiService {
         final data = json.decode(response.body);
         return ProductModel.fromJson(data);
       } else {
-        throw Exception(_handleError(response));
+        throw Exception(_handleError(response, isAuthenticatedRequest: false));
       }
     } on SocketException catch (e) {
       throw Exception(_handleNetworkError(e));
@@ -634,22 +721,27 @@ class ApiService {
     required double grandTotal,
     required Map<String, dynamic> shippingAddress,
     required String paymentMethod,
+    String? walletPhoneNumber,
   }) async {
     try {
       final orderItems = normalizeOrderLineForBackend(items);
       _validateUrl('${ApiConfig.baseUrl}${ApiConfig.orders}');
       final httpClient = _getHttpClient();
+      final orderBody = {
+        'items': orderItems,
+        'totalPrice': totalPrice,
+        'shippingCost': shippingCost,
+        'grandTotal': grandTotal,
+        'shippingAddress': shippingAddress,
+        'paymentMethod': paymentMethod,
+      };
+      if (walletPhoneNumber != null) {
+        orderBody['walletPhoneNumber'] = walletPhoneNumber;
+      }
       final response = await httpClient.post(
         Uri.parse('${ApiConfig.baseUrl}${ApiConfig.orders}'),
         headers: await _getHeaders(),
-        body: json.encode({
-          'items': orderItems,
-          'totalPrice': totalPrice,
-          'shippingCost': shippingCost,
-          'grandTotal': grandTotal,
-          'shippingAddress': shippingAddress,
-          'paymentMethod': paymentMethod,
-        }),
+        body: json.encode(orderBody),
       ).timeout(const Duration(seconds: 30), onTimeout: () {
         throw Exception('Request timeout');
       });
@@ -694,6 +786,93 @@ class ApiService {
     } catch (e) {
       debugPrint('Get orders error: ${e.toString()}');
       throw Exception('Failed to load orders. Please try again.');
+    }
+  }
+
+  // Get all orders (admin only)
+  static Future<List<Map<String, dynamic>>> getAllOrders() async {
+    try {
+      final httpClient = _getHttpClient();
+      final response = await httpClient.get(
+        Uri.parse('${ApiConfig.baseUrl}${ApiConfig.orders}/all'),
+        headers: await _getHeaders(),
+      ).timeout(const Duration(seconds: 30), onTimeout: () {
+        throw Exception('Request timeout');
+      });
+
+      if (response.statusCode == 200) {
+        final data = json.decode(response.body);
+        if (data is List) {
+          return List<Map<String, dynamic>>.from(data);
+        }
+        return [];
+      } else {
+        throw Exception(_handleError(response));
+      }
+    } on SocketException catch (e) {
+      throw Exception(_handleNetworkError(e));
+    } on Exception {
+      rethrow;
+    } catch (e) {
+      debugPrint('Get all orders error: ${e.toString()}');
+      throw Exception('Failed to load orders. Please try again.');
+    }
+  }
+
+  // Get a single order by ID (used by the order details screen to fetch
+  // the latest status when tracking an order)
+  static Future<Map<String, dynamic>> getOrderById(String orderId) async {
+    try {
+      final httpClient = _getHttpClient();
+      final response = await httpClient.get(
+        Uri.parse('${ApiConfig.baseUrl}${ApiConfig.orders}/$orderId'),
+        headers: await _getHeaders(),
+      ).timeout(const Duration(seconds: 30), onTimeout: () {
+        throw Exception('Request timeout');
+      });
+
+      if (response.statusCode == 200) {
+        return json.decode(response.body);
+      } else {
+        throw Exception(_handleError(response));
+      }
+    } on SocketException catch (e) {
+      throw Exception(_handleNetworkError(e));
+    } on Exception {
+      rethrow;
+    } catch (e) {
+      debugPrint('Get order error: ${e.toString()}');
+      throw Exception('Failed to load order. Please try again.');
+    }
+  }
+
+  // Update order status (admin only)
+  static Future<Map<String, dynamic>> updateOrderStatus(
+    String orderId,
+    String status,
+  ) async {
+    try {
+      final httpClient = _getHttpClient();
+      final response = await httpClient.put(
+        Uri.parse('${ApiConfig.baseUrl}${ApiConfig.orders}/$orderId/status'),
+        headers: await _getHeaders(),
+        body: json.encode({'status': status}),
+      ).timeout(const Duration(seconds: 30), onTimeout: () {
+        throw Exception('Request timeout');
+      });
+
+      if (response.statusCode == 200) {
+        return json.decode(response.body);
+      } else {
+        throw Exception(_handleError(response));
+      }
+    } on SocketException catch (e) {
+      throw Exception(_handleNetworkError(e));
+    } on Exception {
+      rethrow;
+    } catch (e) {
+      debugPrint('Update order status error: ${e.toString()}');
+      throw Exception('Failed to update order status. Please try again.');
     }
   }
 

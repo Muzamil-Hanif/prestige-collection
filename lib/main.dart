@@ -14,13 +14,17 @@ import 'pages/contact_page.dart';
 import 'services/storage_service.dart';
 import 'services/api_service.dart';
 import 'services/api_config.dart';
+import 'services/session_manager.dart';
+import 'services/deep_link_service.dart';
 import 'models/menu_item_model.dart';
 import 'services/navigation_service.dart';
 import 'utils/responsive.dart';
 import 'widgets/responsive_drawer.dart';
 
-void main() {
+void main() async {
+  WidgetsFlutterBinding.ensureInitialized();
   ApiService.setProduction(ApiConfig.isProduction);
+  DeepLinkService.init();
   runApp(const MyApp());
 }
 
@@ -56,7 +60,8 @@ class MyApp extends StatelessWidget {
     );
 
     return MaterialApp(
-      title: 'Prestige Men',
+      navigatorKey: SessionManager.navigatorKey,
+      title: 'Prestige Collection',
       debugShowCheckedModeBanner: false,
       theme: ThemeData(
         colorScheme: colorScheme,
@@ -625,16 +630,16 @@ class _MainScreenState extends State<MainScreen> {
     switch (_currentIndex) {
       case 0: // Home
         return SvgPicture.asset(
-          'assets/images/prestige-men-logo-V4.svg',
-          height: 66,
-          width: 66,
+          'assets/images/prestige-collections-final.svg',
+          height: 100,
+          width: 100,
           fit: BoxFit.contain,
         );
       case 1: // Products
-        return const Text('Products');
+        return const Text('Products', style: TextStyle(color: Colors.black87));
 
       case 2: // My Cart
-        return const Text('My Cart');
+        return const Text('My Cart', style: TextStyle(color: Colors.black87));
       default:
         return null;
     }
@@ -645,36 +650,54 @@ class _MainScreenState extends State<MainScreen> {
     final isWideScreen = Responsive.isTablet(context) || Responsive.isDesktop(context);
 
     if (!isWideScreen) {
-      // Mobile: standard AppBar with menu button and title
-      return AppBar(
-        backgroundColor: Colors.white,
-        elevation: 0,
-        systemOverlayStyle: const SystemUiOverlayStyle(
-          statusBarColor: Colors.white,
-          statusBarIconBrightness: Brightness.dark,
-          statusBarBrightness: Brightness.light,
-        ),
-        leading: Builder(
-          builder: (context) => IconButton(
-            icon: const Icon(Icons.menu, color: Colors.black87),
-            onPressed: () => Scaffold.of(context).openDrawer(),
+      // Mobile: Gray AppBar matching background with subtle divider
+      return PreferredSize(
+        preferredSize: const Size.fromHeight(141),
+        child: Container(
+          clipBehavior: Clip.antiAlias,
+          decoration: BoxDecoration(
+            color: const Color(0xFFF5F5F5),
+            
+          ),
+          child: AppBar(
+            backgroundColor: const Color(0xFFF5F5F5),
+            elevation: 0,
+            systemOverlayStyle: const SystemUiOverlayStyle(
+              statusBarColor: Color(0xFFF5F5F5),
+              statusBarIconBrightness: Brightness.dark,
+              statusBarBrightness: Brightness.light,
+            ),
+            leading: Builder(
+              builder: (context) => IconButton(
+                icon: const Icon(Icons.menu, color: Colors.black87),
+                onPressed: () => Scaffold.of(context).openDrawer(),
+              ),
+            ),
+            title: _getAppBarTitle(),
+            toolbarHeight: 140,
+            centerTitle: true,
           ),
         ),
-        title: _getAppBarTitle(),
       );
     }
 
     // Tablet/Desktop: Elegant AppBar with logo, hamburger, tabs, and cart
     return PreferredSize(
-      preferredSize: const Size.fromHeight(280),
-      child: AppBar(
-        backgroundColor: Colors.white,
-        elevation: 0,
-        systemOverlayStyle: const SystemUiOverlayStyle(
-          statusBarColor: Colors.white,
-          statusBarIconBrightness: Brightness.dark,
-          statusBarBrightness: Brightness.light,
+      preferredSize: const Size.fromHeight(281),
+      child: Container(
+        clipBehavior: Clip.antiAlias,
+        decoration: BoxDecoration(
+          color: const Color(0xFFF5F5F5),
+        
         ),
+        child: AppBar(
+          backgroundColor: const Color(0xFFF5F5F5),
+          elevation: 0,
+          systemOverlayStyle: const SystemUiOverlayStyle(
+            statusBarColor: Color(0xFFF5F5F5),
+            statusBarIconBrightness: Brightness.dark,
+            statusBarBrightness: Brightness.light,
+          ),
         leadingWidth: 280,
         leading: MouseRegion(
           cursor: SystemMouseCursors.click,
@@ -686,7 +709,7 @@ class _MainScreenState extends State<MainScreen> {
             child: Padding(
               padding: const EdgeInsets.only(left: 24, top: 8, bottom: 8),
               child: SvgPicture.asset(
-                // 'assets/images/prestige-men-logo-V4.svg',
+              
                 'assets/images/prestige-collections-final.svg',
                 height: 250,
                 width: 250,
@@ -757,6 +780,7 @@ class _MainScreenState extends State<MainScreen> {
       ],
       toolbarHeight: 120,
     ),
+      ),
     );
   }
 
@@ -825,7 +849,6 @@ class _MainScreenState extends State<MainScreen> {
                     // Logo
                     SvgPicture.asset(
                       'assets/images/prestige-collections-white-nobg.svg',
-                      // 'assets/images/prestige-men-logo-V5.svg',
                       height: 120,
                       width: 120,
                       fit: BoxFit.contain,
@@ -947,6 +970,7 @@ class _MainScreenState extends State<MainScreen> {
       return Scaffold(
         backgroundColor: const Color(0xFFF5F5F5),
         appBar: _buildAppBar(context),
+        extendBodyBehindAppBar: false,
         body: Center(
           child: ConstrainedBox(
             constraints: const BoxConstraints(maxWidth: 1200),
@@ -985,6 +1009,7 @@ class _MainScreenState extends State<MainScreen> {
     return Scaffold(
       backgroundColor: const Color(0xFFF5F5F5),
       appBar: _buildAppBar(context),
+      extendBodyBehindAppBar: false,
       drawer: ResponsiveDrawer(items: menuItems),
       body: Center(
         child: ConstrainedBox(

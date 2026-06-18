@@ -136,7 +136,8 @@ class CountryAddressRules {
     ),
   ];
 
-  static CountryAddressRules defaultCountry = supported.first;
+  static CountryAddressRules defaultCountry =
+      supported.firstWhere((c) => c.code == 'PK', orElse: () => supported.first);
 
   static CountryAddressRules byCode(String code) {
     return supported.firstWhere(

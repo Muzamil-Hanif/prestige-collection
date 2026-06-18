@@ -1,3 +1,4 @@
+import 'package:flutter/foundation.dart' show kIsWeb, debugPrint;
 import 'package:flutter_secure_storage/flutter_secure_storage.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
@@ -10,36 +11,83 @@ class StorageService {
   static const String _refreshTokenKey = 'refresh_token';
   static const String _tokenExpiryKey = 'token_expiry';
 
-  static const FlutterSecureStorage _secureStorage = FlutterSecureStorage();
+  static const FlutterSecureStorage _secureStorage = FlutterSecureStorage(
+    webOptions: WebOptions(dbName: 'prestige_men_secure', publicKey: 'prestige_men_key'),
+  );
+
+  // On web, flutter_secure_storage can fail intermittently (WebCrypto API
+  // availability, browser restrictions).  We wrap every secure read/write so
+  // it transparently falls back to SharedPreferences on failure.
+
+  static Future<void> _secureWrite(String key, String value) async {
+    try {
+      await _secureStorage.write(key: key, value: value);
+    } catch (e) {
+      debugPrint('SecureStorage write failed ($key), falling back to prefs: $e');
+      if (kIsWeb) {
+        final prefs = await SharedPreferences.getInstance();
+        await prefs.setString('_secure_$key', value);
+      } else {
+        rethrow;
+      }
+    }
+  }
+
+  static Future<String?> _secureRead(String key) async {
+    try {
+      final value = await _secureStorage.read(key: key);
+      if (value != null) return value;
+      // Fall through to prefs fallback in case a previous write used it.
+    } catch (e) {
+      debugPrint('SecureStorage read failed ($key), falling back to prefs: $e');
+    }
+    if (kIsWeb) {
+      final prefs = await SharedPreferences.getInstance();
+      return prefs.getString('_secure_$key');
+    }
+    return null;
+  }
+
+  static Future<void> _secureDelete(String key) async {
+    try {
+      await _secureStorage.delete(key: key);
+    } catch (e) {
+      debugPrint('SecureStorage delete failed ($key): $e');
+    }
+    if (kIsWeb) {
+      final prefs = await SharedPreferences.getInstance();
+      await prefs.remove('_secure_$key');
+    }
+  }
 
   // Save authentication token (encrypted)
   static Future<void> saveToken(String token) async {
-    await _secureStorage.write(key: _tokenKey, value: token);
+    await _secureWrite(_tokenKey, token);
   }
 
   // Get authentication token
   static Future<String?> getToken() async {
-    return await _secureStorage.read(key: _tokenKey);
+    return _secureRead(_tokenKey);
   }
 
   // Save refresh token (encrypted)
   static Future<void> saveRefreshToken(String token) async {
-    await _secureStorage.write(key: _refreshTokenKey, value: token);
+    await _secureWrite(_refreshTokenKey, token);
   }
 
   // Get refresh token
   static Future<String?> getRefreshToken() async {
-    return await _secureStorage.read(key: _refreshTokenKey);
+    return _secureRead(_refreshTokenKey);
   }
 
   // Save token expiry timestamp
   static Future<void> saveTokenExpiry(int expiryMs) async {
-    await _secureStorage.write(key: _tokenExpiryKey, value: expiryMs.toString());
+    await _secureWrite(_tokenExpiryKey, expiryMs.toString());
   }
 
   // Get token expiry
   static Future<int?> getTokenExpiry() async {
-    final expiry = await _secureStorage.read(key: _tokenExpiryKey);
+    final expiry = await _secureRead(_tokenExpiryKey);
     return expiry != null ? int.tryParse(expiry) : null;
   }
 
@@ -102,9 +150,9 @@ class StorageService {
   // Clear all stored data (logout)
   static Future<void> clearAll() async {
     final prefs = await SharedPreferences.getInstance();
-    await _secureStorage.delete(key: _tokenKey);
-    await _secureStorage.delete(key: _refreshTokenKey);
-    await _secureStorage.delete(key: _tokenExpiryKey);
+    await _secureDelete(_tokenKey);
+    await _secureDelete(_refreshTokenKey);
+    await _secureDelete(_tokenExpiryKey);
     await prefs.remove(_userIdKey);
     await prefs.remove(_userEmailKey);
     await prefs.remove(_userRoleKey);

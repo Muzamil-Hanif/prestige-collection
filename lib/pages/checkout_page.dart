@@ -1,9 +1,11 @@
+import 'dart:async';
 import 'dart:math' as math;
 
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 
 import '../services/api_service.dart';
+import '../services/deep_link_service.dart';
 import '../services/safepay_service.dart';
 import '../utils/address_validation.dart';
 
@@ -31,6 +33,7 @@ class _CheckoutPageState extends State<CheckoutPage> {
   final _addressController = TextEditingController();
   final _cityController = TextEditingController();
   final _zipController = TextEditingController();
+  final _walletPhoneController = TextEditingController();
 
   String _selectedPaymentMethod = 'Credit Card';
   String _selectedCountryCode = CountryAddressRules.defaultCountry.code;
@@ -38,21 +41,98 @@ class _CheckoutPageState extends State<CheckoutPage> {
   bool _isPlacingOrder = false;
   int _currentStep = 0;
 
+  /// Whether the backend actually has SafePay configured. Starts `true`
+  /// (optimistic) so the UI doesn't flash a disabled state while the check
+  /// is in flight; flips to `false` if the backend reports it's not ready,
+  /// at which point Credit/Debit Card are disabled instead of letting the
+  /// user pick a method that's guaranteed to fail at submit time.
+  bool _cardPaymentsAvailable = true;
+
   /// After Address step fails validation, re-validate on change so fixed fields clear.
   bool _addressLiveValidation = false;
+
+  /// Listens for the `prestigecollection://payment-callback` deep link SafePay's
+  /// redirect bounces us back to, so payment confirmation happens
+  /// automatically instead of requiring the user to manually switch back to
+  /// the app and tap "I Completed Payment".
+  StreamSubscription<Uri>? _paymentCallbackSub;
+
+  /// Whether `_showPaymentInProgressDialog` is currently on screen — lets the
+  /// deep-link handler dismiss it without risking popping the wrong route.
+  bool _paymentDialogOpen = false;
 
   static const _stepLabels = ['Address', 'Checkout', 'Payment'];
   static const _connectorHints = ['Go To Checkout', 'Choose Payment Method'];
 
   @override
+  void initState() {
+    super.initState();
+    _checkCardPaymentAvailability();
+  }
+
+  Future<void> _checkCardPaymentAvailability() async {
+    final available = await SafePayService.isCardPaymentAvailable();
+    if (!mounted) return;
+    setState(() {
+      _cardPaymentsAvailable = available;
+      if (!available &&
+          (_selectedPaymentMethod == 'Credit Card' ||
+              _selectedPaymentMethod == 'Debit Card')) {
+        _selectedPaymentMethod = 'Cash on Delivery';
+      }
+    });
+  }
+
+  @override
   void dispose() {
+    _paymentCallbackSub?.cancel();
     _nameController.dispose();
     _emailController.dispose();
     _phoneController.dispose();
     _addressController.dispose();
     _cityController.dispose();
     _zipController.dispose();
+    _walletPhoneController.dispose();
     super.dispose();
+  }
+
+  /// Starts listening for the SafePay return deep link for [orderId] /
+  /// [requestId]. Cancels any previous subscription first since only one
+  /// payment can be in flight from this page at a time.
+  void _listenForPaymentCallback(String orderId, String requestId) {
+    _paymentCallbackSub?.cancel();
+    _paymentCallbackSub = DeepLinkService.paymentCallbacks.listen((uri) {
+      _onPaymentCallbackReceived(uri, orderId, requestId);
+    });
+  }
+
+  void _onPaymentCallbackReceived(
+    Uri uri,
+    String orderId,
+    String requestId,
+  ) {
+    _paymentCallbackSub?.cancel();
+    _paymentCallbackSub = null;
+    if (!mounted) return;
+
+    if (_paymentDialogOpen) {
+      Navigator.of(context, rootNavigator: true).pop();
+      _paymentDialogOpen = false;
+    }
+
+    // The deep link's own status/order_id are just a hint for logging —
+    // _verifyAndCompletePayment always re-checks with the backend
+    // server-to-server before trusting anything, so a tampered or stale
+    // link can't fake a successful order.
+    final linkOrderId = uri.queryParameters['order_id'];
+    if (linkOrderId != null && linkOrderId != orderId) {
+      debugPrint(
+        'Payment callback order_id ($linkOrderId) does not match in-flight '
+        'order ($orderId) — verifying the in-flight order anyway.',
+      );
+    }
+
+    _verifyAndCompletePayment(orderId, requestId);
   }
 
   double get _grandTotal => widget.totalPrice + _shippingCost;
@@ -116,6 +196,20 @@ class _CheckoutPageState extends State<CheckoutPage> {
   void _placeOrder() async {
     if (!(_formKey.currentState?.validate() ?? false)) return;
 
+    if (!_cardPaymentsAvailable &&
+        (_selectedPaymentMethod == 'Credit Card' ||
+            _selectedPaymentMethod == 'Debit Card')) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: const Text(
+            'Card payments are temporarily unavailable. Please choose another payment method.',
+          ),
+          backgroundColor: Theme.of(context).colorScheme.error,
+        ),
+      );
+      return;
+    }
+
     setState(() {
       _isPlacingOrder = true;
     });
@@ -130,6 +224,12 @@ class _CheckoutPageState extends State<CheckoutPage> {
         'zipCode': _countryRules.normalizeZip(_zipController.text),
       };
 
+      String? walletPhoneNumber;
+      if (_selectedPaymentMethod == 'JazzCash' ||
+          _selectedPaymentMethod == 'easyPaisa') {
+        walletPhoneNumber = _countryRules.toE164(_walletPhoneController.text);
+      }
+
       // Step 1: Create order
       final orderResponse = await ApiService.createOrder(
         items: widget.cartItems,
@@ -138,6 +238,7 @@ class _CheckoutPageState extends State<CheckoutPage> {
         grandTotal: _grandTotal,
         shippingAddress: shippingAddress,
         paymentMethod: _selectedPaymentMethod,
+        walletPhoneNumber: walletPhoneNumber,
       );
 
       if (!mounted) return;
@@ -175,10 +276,56 @@ class _CheckoutPageState extends State<CheckoutPage> {
 
         if (!mounted) return;
 
-        // Step 3: Launch SafePay payment page
-        _showPaymentInProgressDialog(orderId, paymentInitiation.requestId!);
+        // Step 3: Launch SafePay's hosted payment page in the external
+        // browser. Card details are entered there and never touch this app
+        // or our backend — only the requestId comes back, which the backend
+        // re-verifies server-to-server (see _verifyAndCompletePayment).
+        // Start listening for the deep link SafePay's callback page redirects
+        // into *before* opening the browser, so we don't miss a fast return.
+        _listenForPaymentCallback(orderId, paymentInitiation.requestId!);
+        try {
+          await SafePayService.launchPaymentPage(
+            paymentInitiation.redirectUrl!,
+          );
+        } catch (e) {
+          _paymentCallbackSub?.cancel();
+          _paymentCallbackSub = null;
+          if (mounted) {
+            setState(() => _isPlacingOrder = false);
+            ScaffoldMessenger.of(context).showSnackBar(
+              SnackBar(
+                content: Text('Could not open SafePay: $e'),
+                backgroundColor: Theme.of(context).colorScheme.error,
+                duration: const Duration(seconds: 3),
+              ),
+            );
+          }
+          return;
+        }
+
+        if (!mounted) return;
+
+        _showPaymentInProgressDialog(
+          orderId,
+          paymentInitiation.requestId!,
+          Theme.of(context).colorScheme,
+        );
+      } else if (_selectedPaymentMethod == 'JazzCash' ||
+          _selectedPaymentMethod == 'easyPaisa') {
+        // For wallet payments, show pending verification screen
+        if (mounted) {
+          setState(() {
+            _isPlacingOrder = false;
+          });
+
+          _showWalletPaymentPendingDialog(
+            orderId,
+            _selectedPaymentMethod,
+            Theme.of(context).colorScheme,
+          );
+        }
       } else {
-        // For Cash on Delivery and other methods, show success immediately
+        // For Cash on Delivery, show success immediately
         if (mounted) {
           setState(() {
             _isPlacingOrder = false;
@@ -229,47 +376,353 @@ class _CheckoutPageState extends State<CheckoutPage> {
     }
   }
 
-  void _showPaymentInProgressDialog(String orderId, String requestId) {
+  void _showPaymentInProgressDialog(
+    String orderId,
+    String requestId,
+    ColorScheme cs,
+  ) {
+    _paymentDialogOpen = true;
     showDialog<void>(
       context: context,
       barrierDismissible: false,
+      barrierColor: Colors.black.withValues(alpha: 0.55),
       builder: (dialogContext) {
+        final topAccent =
+            Color.lerp(cs.surfaceContainerHighest, cs.secondary, 0.12) ??
+            cs.surfaceContainerHighest;
+        final bottomDeep =
+            Color.lerp(cs.surface, Colors.black, 0.28) ?? cs.surface;
+
+        const dialogRadius = 22.0;
+
         return Dialog(
-          child: Padding(
-            padding: const EdgeInsets.all(24),
-            child: Column(
-              mainAxisSize: MainAxisSize.min,
-              children: [
-                const CircularProgressIndicator(),
-                const SizedBox(height: 16),
-                const Text(
-                  'Opening SafePay...',
-                  style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold),
+          backgroundColor: Colors.transparent,
+          elevation: 0,
+          insetPadding: const EdgeInsets.symmetric(
+            horizontal: 28,
+            vertical: 24,
+          ),
+          child: ConstrainedBox(
+            constraints: const BoxConstraints(maxWidth: 400),
+            child: Container(
+              decoration: BoxDecoration(
+                borderRadius: BorderRadius.circular(dialogRadius),
+                gradient: LinearGradient(
+                  begin: Alignment.topLeft,
+                  end: Alignment.bottomRight,
+                  colors: [topAccent, cs.surfaceContainerHighest, bottomDeep],
+                  stops: const [0.0, 0.42, 1.0],
                 ),
-                const SizedBox(height: 8),
-                const Text(
-                  'Complete your payment in the opened browser.',
-                  textAlign: TextAlign.center,
-                  style: TextStyle(fontSize: 14, color: Colors.grey),
+                border: Border.all(
+                  color: cs.outline.withValues(alpha: 0.22),
+                  width: 1,
                 ),
-                const SizedBox(height: 20),
-                Row(
-                  mainAxisAlignment: MainAxisAlignment.spaceEvenly,
+                boxShadow: [
+                  BoxShadow(
+                    color: Colors.black.withValues(alpha: 0.45),
+                    blurRadius: 28,
+                    spreadRadius: 0,
+                    offset: const Offset(0, 16),
+                  ),
+                  BoxShadow(
+                    color: cs.secondary.withValues(alpha: 0.12),
+                    blurRadius: 20,
+                    offset: const Offset(0, 10),
+                  ),
+                ],
+              ),
+              child: Padding(
+                padding: const EdgeInsets.fromLTRB(24, 28, 24, 22),
+                child: Column(
+                  mainAxisSize: MainAxisSize.min,
                   children: [
-                    OutlinedButton(
-                      onPressed: () => Navigator.pop(dialogContext),
-                      child: const Text('Cancel'),
+                    SizedBox(
+                      width: 80,
+                      height: 80,
+                      child: Stack(
+                        alignment: Alignment.center,
+                        children: [
+                          SizedBox(
+                            width: 80,
+                            height: 80,
+                            child: CircularProgressIndicator(
+                              strokeWidth: 2.5,
+                              valueColor: AlwaysStoppedAnimation<Color>(
+                                cs.secondary,
+                              ),
+                            ),
+                          ),
+                          Icon(
+                            Icons.lock_outline,
+                            size: 32,
+                            color: cs.secondary,
+                          ),
+                        ],
+                      ),
                     ),
-                    ElevatedButton(
-                      onPressed: () {
-                        Navigator.pop(dialogContext);
-                        _verifyAndCompletePayment(orderId, requestId);
-                      },
-                      child: const Text('I Completed Payment'),
+                    const SizedBox(height: 22),
+                    Text(
+                      'Opening SafePay...',
+                      textAlign: TextAlign.center,
+                      style: TextStyle(
+                        color: cs.onSurface,
+                        fontSize: 22,
+                        fontWeight: FontWeight.w800,
+                        letterSpacing: -0.4,
+                      ),
+                    ),
+                    const SizedBox(height: 10),
+                    Text(
+                      "Complete your payment in the opened browser — you'll be "
+                      "brought back here automatically. If that doesn't happen, "
+                      'confirm manually below.',
+                      textAlign: TextAlign.center,
+                      style: TextStyle(
+                        color: cs.onSurface.withValues(alpha: 0.72),
+                        fontSize: 15,
+                        height: 1.45,
+                        fontWeight: FontWeight.w500,
+                      ),
+                    ),
+                    const SizedBox(height: 26),
+                    SizedBox(
+                      width: double.infinity,
+                      height: 50,
+                      child: ElevatedButton(
+                        onPressed: () {
+                          _paymentDialogOpen = false;
+                          _paymentCallbackSub?.cancel();
+                          _paymentCallbackSub = null;
+                          Navigator.pop(dialogContext);
+                          _verifyAndCompletePayment(orderId, requestId);
+                        },
+                        style: ElevatedButton.styleFrom(
+                          elevation: 0,
+                          backgroundColor: cs.secondary,
+                          foregroundColor: cs.onSecondary,
+                          shape: RoundedRectangleBorder(
+                            borderRadius: BorderRadius.circular(14),
+                          ),
+                        ),
+                        child: Text(
+                          'I Completed Payment',
+                          style: TextStyle(
+                            color: cs.onSecondary,
+                            fontWeight: FontWeight.w700,
+                            fontSize: 16,
+                          ),
+                        ),
+                      ),
+                    ),
+                    const SizedBox(height: 10),
+                    SizedBox(
+                      width: double.infinity,
+                      height: 50,
+                      child: OutlinedButton(
+                        onPressed: () {
+                          _paymentDialogOpen = false;
+                          _paymentCallbackSub?.cancel();
+                          _paymentCallbackSub = null;
+                          Navigator.pop(dialogContext);
+                        },
+                        style: OutlinedButton.styleFrom(
+                          side: BorderSide(
+                            color: cs.outline.withValues(alpha: 0.4),
+                          ),
+                          shape: RoundedRectangleBorder(
+                            borderRadius: BorderRadius.circular(14),
+                          ),
+                        ),
+                        child: Text(
+                          'Cancel',
+                          style: TextStyle(
+                            color: cs.onSurface.withValues(alpha: 0.85),
+                            fontWeight: FontWeight.w700,
+                            fontSize: 16,
+                          ),
+                        ),
+                      ),
                     ),
                   ],
                 ),
-              ],
+              ),
+            ),
+          ),
+        );
+      },
+    );
+  }
+
+  void _showWalletPaymentPendingDialog(
+    String orderId,
+    String paymentMethod,
+    ColorScheme cs,
+  ) {
+    showDialog<void>(
+      context: context,
+      barrierDismissible: false,
+      barrierColor: Colors.black.withValues(alpha: 0.55),
+      builder: (dialogContext) {
+        final topAccent =
+            Color.lerp(cs.surfaceContainerHighest, cs.secondary, 0.12) ??
+            cs.surfaceContainerHighest;
+        final bottomDeep =
+            Color.lerp(cs.surface, Colors.black, 0.28) ?? cs.surface;
+
+        const dialogRadius = 22.0;
+
+        return Dialog(
+          backgroundColor: Colors.transparent,
+          elevation: 0,
+          insetPadding: const EdgeInsets.symmetric(
+            horizontal: 28,
+            vertical: 24,
+          ),
+          child: ConstrainedBox(
+            constraints: const BoxConstraints(maxWidth: 400),
+            child: Container(
+              decoration: BoxDecoration(
+                borderRadius: BorderRadius.circular(dialogRadius),
+                gradient: LinearGradient(
+                  begin: Alignment.topLeft,
+                  end: Alignment.bottomRight,
+                  colors: [topAccent, cs.surfaceContainerHighest, bottomDeep],
+                  stops: const [0.0, 0.42, 1.0],
+                ),
+                border: Border.all(
+                  color: cs.outline.withValues(alpha: 0.22),
+                  width: 1,
+                ),
+                boxShadow: [
+                  BoxShadow(
+                    color: Colors.black.withValues(alpha: 0.45),
+                    blurRadius: 28,
+                    spreadRadius: 0,
+                    offset: const Offset(0, 16),
+                  ),
+                  BoxShadow(
+                    color: cs.secondary.withValues(alpha: 0.12),
+                    blurRadius: 20,
+                    offset: const Offset(0, 10),
+                  ),
+                ],
+              ),
+              child: Padding(
+                padding: const EdgeInsets.fromLTRB(24, 28, 24, 22),
+                child: Column(
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    Container(
+                      width: 80,
+                      height: 80,
+                      decoration: BoxDecoration(
+                        shape: BoxShape.circle,
+                        gradient: LinearGradient(
+                          begin: Alignment.topCenter,
+                          end: Alignment.bottomCenter,
+                          colors: [
+                            Color.lerp(
+                                  cs.surfaceContainerHighest,
+                                  cs.secondary,
+                                  0.2,
+                                ) ??
+                                cs.surfaceContainerHighest,
+                            Color.lerp(
+                                  cs.surfaceContainerHighest,
+                                  Colors.black,
+                                  0.12,
+                                ) ??
+                                cs.surfaceContainerHighest,
+                          ],
+                        ),
+                        border: Border.all(color: cs.secondary, width: 2.5),
+                        boxShadow: [
+                          BoxShadow(
+                            color: cs.secondary.withValues(alpha: 0.35),
+                            blurRadius: 20,
+                            spreadRadius: 0,
+                            offset: const Offset(0, 6),
+                          ),
+                        ],
+                      ),
+                      child: Icon(
+                        Icons.schedule_outlined,
+                        size: 44,
+                        color: cs.secondary,
+                      ),
+                    ),
+                    const SizedBox(height: 22),
+                    Text(
+                      'Payment Pending',
+                      textAlign: TextAlign.center,
+                      style: TextStyle(
+                        color: cs.onSurface,
+                        fontSize: 22,
+                        fontWeight: FontWeight.w800,
+                        letterSpacing: -0.4,
+                      ),
+                    ),
+                    const SizedBox(height: 10),
+                    Text(
+                      'Complete your payment on $paymentMethod to confirm your order.',
+                      textAlign: TextAlign.center,
+                      style: TextStyle(
+                        color: cs.onSurface.withValues(alpha: 0.72),
+                        fontSize: 15,
+                        height: 1.45,
+                        fontWeight: FontWeight.w500,
+                      ),
+                    ),
+                    const SizedBox(height: 16),
+                    Container(
+                      padding: const EdgeInsets.all(12),
+                      decoration: BoxDecoration(
+                        color: cs.secondary.withValues(alpha: 0.1),
+                        borderRadius: BorderRadius.circular(12),
+                      ),
+                      child: Text(
+                        'Order ID: $orderId',
+                        textAlign: TextAlign.center,
+                        style: TextStyle(
+                          color: cs.secondary,
+                          fontSize: 12,
+                          fontFamily: 'monospace',
+                          fontWeight: FontWeight.w600,
+                        ),
+                      ),
+                    ),
+                    const SizedBox(height: 26),
+                    SizedBox(
+                      width: double.infinity,
+                      height: 50,
+                      child: ElevatedButton(
+                        onPressed: () {
+                          Navigator.of(dialogContext).pop();
+                          if (!mounted) return;
+                          widget.onOrderPlaced();
+                          Navigator.of(context).pop();
+                        },
+                        style: ElevatedButton.styleFrom(
+                          elevation: 0,
+                          backgroundColor: cs.secondary,
+                          foregroundColor: cs.onSecondary,
+                          shape: RoundedRectangleBorder(
+                            borderRadius: BorderRadius.circular(14),
+                          ),
+                        ),
+                        child: Text(
+                          'OK',
+                          style: TextStyle(
+                            color: cs.onSecondary,
+                            fontWeight: FontWeight.w700,
+                            fontSize: 16,
+                          ),
+                        ),
+                      ),
+                    ),
+                  ],
+                ),
+              ),
             ),
           ),
         );
@@ -320,22 +773,75 @@ class _CheckoutPageState extends State<CheckoutPage> {
   }
 
   void _showPaymentVerificationDialog() {
+    final cs = Theme.of(context).colorScheme;
+    final topAccent =
+        Color.lerp(cs.surfaceContainerHighest, cs.secondary, 0.12) ??
+        cs.surfaceContainerHighest;
+    final bottomDeep = Color.lerp(cs.surface, Colors.black, 0.28) ?? cs.surface;
+
     showDialog<void>(
       context: context,
       barrierDismissible: false,
+      barrierColor: Colors.black.withValues(alpha: 0.55),
       builder: (context) => Dialog(
-        child: Padding(
-          padding: const EdgeInsets.all(24),
-          child: Column(
-            mainAxisSize: MainAxisSize.min,
-            children: [
-              const CircularProgressIndicator(),
-              const SizedBox(height: 16),
-              const Text(
-                'Verifying payment...',
-                style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold),
+        backgroundColor: Colors.transparent,
+        elevation: 0,
+        insetPadding: const EdgeInsets.symmetric(horizontal: 28, vertical: 24),
+        child: ConstrainedBox(
+          constraints: const BoxConstraints(maxWidth: 400),
+          child: Container(
+            decoration: BoxDecoration(
+              borderRadius: BorderRadius.circular(22),
+              gradient: LinearGradient(
+                begin: Alignment.topLeft,
+                end: Alignment.bottomRight,
+                colors: [topAccent, cs.surfaceContainerHighest, bottomDeep],
+                stops: const [0.0, 0.42, 1.0],
               ),
-            ],
+              border: Border.all(
+                color: cs.outline.withValues(alpha: 0.22),
+                width: 1,
+              ),
+              boxShadow: [
+                BoxShadow(
+                  color: Colors.black.withValues(alpha: 0.45),
+                  blurRadius: 28,
+                  offset: const Offset(0, 16),
+                ),
+                BoxShadow(
+                  color: cs.secondary.withValues(alpha: 0.12),
+                  blurRadius: 20,
+                  offset: const Offset(0, 10),
+                ),
+              ],
+            ),
+            child: Padding(
+              padding: const EdgeInsets.fromLTRB(24, 28, 24, 28),
+              child: Column(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  SizedBox(
+                    width: 64,
+                    height: 64,
+                    child: CircularProgressIndicator(
+                      strokeWidth: 2.5,
+                      valueColor: AlwaysStoppedAnimation<Color>(cs.secondary),
+                    ),
+                  ),
+                  const SizedBox(height: 22),
+                  Text(
+                    'Verifying payment...',
+                    textAlign: TextAlign.center,
+                    style: TextStyle(
+                      color: cs.onSurface,
+                      fontSize: 18,
+                      fontWeight: FontWeight.w800,
+                      letterSpacing: -0.4,
+                    ),
+                  ),
+                ],
+              ),
+            ),
           ),
         ),
       ),
@@ -1119,40 +1625,60 @@ class _CheckoutPageState extends State<CheckoutPage> {
               RadioListTile<String>(
                 title: Text(
                   'Credit Card',
-                  style: TextStyle(color: cs.onSurface),
+                  style: TextStyle(
+                    color: _cardPaymentsAvailable
+                        ? cs.onSurface
+                        : cs.onSurface.withValues(alpha: 0.4),
+                  ),
                 ),
                 subtitle: Text(
-                  'Visa, Mastercard, Amex (via SafePay)',
+                  _cardPaymentsAvailable
+                      ? 'Visa, Mastercard, Amex (via SafePay)'
+                      : 'Temporarily unavailable',
                   style: TextStyle(
-                    color: cs.onSurface.withValues(alpha: 0.55),
+                    color: cs.onSurface.withValues(
+                      alpha: _cardPaymentsAvailable ? 0.55 : 0.4,
+                    ),
                   ),
                 ),
                 value: 'Credit Card',
                 groupValue: _selectedPaymentMethod,
-                onChanged: (value) {
-                  if (value != null) {
-                    setState(() => _selectedPaymentMethod = value);
-                  }
-                },
+                onChanged: _cardPaymentsAvailable
+                    ? (value) {
+                        if (value != null) {
+                          setState(() => _selectedPaymentMethod = value);
+                        }
+                      }
+                    : null,
               ),
               RadioListTile<String>(
                 title: Text(
                   'Debit Card',
-                  style: TextStyle(color: cs.onSurface),
+                  style: TextStyle(
+                    color: _cardPaymentsAvailable
+                        ? cs.onSurface
+                        : cs.onSurface.withValues(alpha: 0.4),
+                  ),
                 ),
                 subtitle: Text(
-                  'Visa, Mastercard (via SafePay)',
+                  _cardPaymentsAvailable
+                      ? 'Visa, Mastercard (via SafePay)'
+                      : 'Temporarily unavailable',
                   style: TextStyle(
-                    color: cs.onSurface.withValues(alpha: 0.55),
+                    color: cs.onSurface.withValues(
+                      alpha: _cardPaymentsAvailable ? 0.55 : 0.4,
+                    ),
                   ),
                 ),
                 value: 'Debit Card',
                 groupValue: _selectedPaymentMethod,
-                onChanged: (value) {
-                  if (value != null) {
-                    setState(() => _selectedPaymentMethod = value);
-                  }
-                },
+                onChanged: _cardPaymentsAvailable
+                    ? (value) {
+                        if (value != null) {
+                          setState(() => _selectedPaymentMethod = value);
+                        }
+                      }
+                    : null,
               ),
               RadioListTile<String>(
                 title: Text('JazzCash', style: TextStyle(color: cs.onSurface)),
@@ -1205,6 +1731,67 @@ class _CheckoutPageState extends State<CheckoutPage> {
                   }
                 },
               ),
+              if (_selectedPaymentMethod == 'JazzCash' ||
+                  _selectedPaymentMethod == 'easyPaisa') ...[
+                const SizedBox(height: 12),
+                Padding(
+                  padding: const EdgeInsets.symmetric(horizontal: 16),
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.stretch,
+                    children: [
+                      Text(
+                        '$_selectedPaymentMethod Phone Number',
+                        style: TextStyle(
+                          fontSize: 14,
+                          fontWeight: FontWeight.w600,
+                          color: cs.onSurface,
+                        ),
+                      ),
+                      const SizedBox(height: 10),
+                      TextFormField(
+                        controller: _walletPhoneController,
+                        cursorColor: cs.onSurface,
+                        style: TextStyle(color: cs.onSurface),
+                        decoration: _fieldDecoration(
+                          label: 'Phone Number',
+                          icon: Icons.phone_outlined,
+                        ).copyWith(
+                          prefixText: '${_countryRules.dialCode} ',
+                          prefixStyle: TextStyle(
+                            color: cs.onSurface.withValues(alpha: 0.85),
+                            fontWeight: FontWeight.w600,
+                          ),
+                          hintText: '3001234567',
+                          helperText: 'Enter without leading 0 (e.g., 3001234567)',
+                          helperStyle: TextStyle(
+                            color: cs.onSurface.withValues(alpha: 0.5),
+                            fontSize: 11,
+                          ),
+                          hintStyle: TextStyle(
+                            color: cs.onSurface.withValues(alpha: 0.45),
+                            fontSize: 13,
+                          ),
+                        ),
+                        keyboardType: TextInputType.phone,
+                        inputFormatters: _countryRules.phoneInputFormatters(),
+                        onChanged: (value) {
+                          // Remove leading zero if user entered it by mistake
+                          if (value.startsWith('0') && value.length > 1) {
+                            _walletPhoneController.text = value.substring(1);
+                            _walletPhoneController.selection = TextSelection.fromPosition(
+                              TextPosition(offset: value.length - 1),
+                            );
+                          }
+                        },
+                        validator: _selectedPaymentMethod == 'JazzCash' ||
+                                _selectedPaymentMethod == 'easyPaisa'
+                            ? _validatePhone
+                            : null,
+                      ),
+                    ],
+                  ),
+                ),
+              ],
               const SizedBox(height: 8),
             ],
           ),

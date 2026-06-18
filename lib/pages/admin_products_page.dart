@@ -3,6 +3,7 @@ import '../models/product_model.dart';
 import '../services/api_service.dart';
 import '../utils/responsive.dart';
 import 'admin_product_form_page.dart';
+import '../main.dart' show MainScreen;
 
 class AdminProductsPage extends StatefulWidget {
   const AdminProductsPage({super.key});
@@ -158,9 +159,12 @@ class _AdminProductsPageState extends State<AdminProductsPage> {
         ],
         backgroundColor: Colors.transparent,
         elevation: 0,
-        leading: IconButton(
-          icon: const Icon(Icons.arrow_back, color: Colors.black),
-          onPressed: () => Navigator.of(context).pop(),
+         leading: IconButton(
+          icon: const Icon(Icons.arrow_back),
+          onPressed: () => Navigator.of(context).pushAndRemoveUntil(
+            MaterialPageRoute(builder: (context) => const MainScreen()),
+            (route) => false,
+          ),
         ),
       ),
       floatingActionButton: FloatingActionButton.extended(
