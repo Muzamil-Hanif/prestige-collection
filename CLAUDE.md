@@ -24,6 +24,25 @@ Run a single test file:
 flutter test test/widget_test.dart
 ```
 
+## Project Structure
+
+### lib/ Organization
+```
+lib/
+├── main.dart              # App entry, MaterialApp, theme, routing
+├── models/                # Data models (User, Product, AuthResponse, MenuItem)
+├── pages/                 # 23 screens (organized by feature: Auth, Products, Orders, etc.)
+├── services/              # API, storage, session, navigation, SafePay integration
+├── utils/                 # Helpers: responsive layout, order status, address validation
+└── widgets/               # Reusable components (ResponsiveDrawer, etc.)
+```
+
+**Notable files:**
+- `socket_exception_stub.dart` — Required for web compatibility (conditional import in `api_service.dart`)
+- `home_page_clean.dart` — Consolidated home screen (1755-line duplicate removed June 2026)
+
+**Archived documents:** Security and auth review reports moved to `docs/reports/`
+
 ## Architecture
 
 ### State Management
