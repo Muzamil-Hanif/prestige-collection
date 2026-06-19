@@ -66,7 +66,6 @@ class ResponsiveDrawer extends StatelessWidget {
         mainAxisAlignment: MainAxisAlignment.center,
         children: [
           SvgPicture.asset(
-            // 'assets/images/prestige-men-logo-V5.svg',
             'assets/images/prestige-collections-white-nobg.svg',
             height: 100,
             width: 100,
