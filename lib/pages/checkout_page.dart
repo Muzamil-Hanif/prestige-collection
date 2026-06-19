@@ -115,23 +115,17 @@ class _CheckoutPageState extends State<CheckoutPage> {
     _paymentCallbackSub = null;
     if (!mounted) return;
 
+    debugPrint('✅ Deep link received: $uri');
+
     if (_paymentDialogOpen) {
       Navigator.of(context, rootNavigator: true).pop();
       _paymentDialogOpen = false;
     }
 
-    // The deep link's own status/order_id are just a hint for logging —
-    // _verifyAndCompletePayment always re-checks with the backend
-    // server-to-server before trusting anything, so a tampered or stale
-    // link can't fake a successful order.
     final linkOrderId = uri.queryParameters['order_id'];
-    if (linkOrderId != null && linkOrderId != orderId) {
-      debugPrint(
-        'Payment callback order_id ($linkOrderId) does not match in-flight '
-        'order ($orderId) — verifying the in-flight order anyway.',
-      );
-    }
+    debugPrint('Verifying payment for order: $orderId (link: $linkOrderId)');
 
+    // Auto-verify immediately (no manual button needed)
     _verifyAndCompletePayment(orderId, requestId);
   }
 
@@ -473,74 +467,13 @@ class _CheckoutPageState extends State<CheckoutPage> {
                     ),
                     const SizedBox(height: 10),
                     Text(
-                      "Complete your payment in the opened browser — you'll be "
-                      "brought back here automatically. If that doesn't happen, "
-                      'confirm manually below.',
+                      'Complete your payment in the browser. You will be returned to the app automatically.',
                       textAlign: TextAlign.center,
                       style: TextStyle(
                         color: cs.onSurface.withValues(alpha: 0.72),
                         fontSize: 15,
                         height: 1.45,
                         fontWeight: FontWeight.w500,
-                      ),
-                    ),
-                    const SizedBox(height: 26),
-                    SizedBox(
-                      width: double.infinity,
-                      height: 50,
-                      child: ElevatedButton(
-                        onPressed: () {
-                          _paymentDialogOpen = false;
-                          _paymentCallbackSub?.cancel();
-                          _paymentCallbackSub = null;
-                          Navigator.pop(dialogContext);
-                          _verifyAndCompletePayment(orderId, requestId);
-                        },
-                        style: ElevatedButton.styleFrom(
-                          elevation: 0,
-                          backgroundColor: cs.secondary,
-                          foregroundColor: cs.onSecondary,
-                          shape: RoundedRectangleBorder(
-                            borderRadius: BorderRadius.circular(14),
-                          ),
-                        ),
-                        child: Text(
-                          'I Completed Payment',
-                          style: TextStyle(
-                            color: cs.onSecondary,
-                            fontWeight: FontWeight.w700,
-                            fontSize: 16,
-                          ),
-                        ),
-                      ),
-                    ),
-                    const SizedBox(height: 10),
-                    SizedBox(
-                      width: double.infinity,
-                      height: 50,
-                      child: OutlinedButton(
-                        onPressed: () {
-                          _paymentDialogOpen = false;
-                          _paymentCallbackSub?.cancel();
-                          _paymentCallbackSub = null;
-                          Navigator.pop(dialogContext);
-                        },
-                        style: OutlinedButton.styleFrom(
-                          side: BorderSide(
-                            color: cs.outline.withValues(alpha: 0.4),
-                          ),
-                          shape: RoundedRectangleBorder(
-                            borderRadius: BorderRadius.circular(14),
-                          ),
-                        ),
-                        child: Text(
-                          'Cancel',
-                          style: TextStyle(
-                            color: cs.onSurface.withValues(alpha: 0.85),
-                            fontWeight: FontWeight.w700,
-                            fontSize: 16,
-                          ),
-                        ),
                       ),
                     ),
                   ],

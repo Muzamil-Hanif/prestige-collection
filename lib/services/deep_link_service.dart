@@ -40,7 +40,9 @@ class DeepLinkService {
   }
 
   static void _handleUri(Uri uri) {
-    if (uri.scheme == 'prestigemen' && uri.host == 'payment-callback') {
+    debugPrint('DeepLinkService received URI: $uri');
+    if (uri.scheme == 'prestigecollection' && uri.host == 'payment-callback') {
+      debugPrint('Payment callback deep link received: $uri');
       _paymentCallbackController.add(uri);
     }
   }
