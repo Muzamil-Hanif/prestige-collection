@@ -79,5 +79,5 @@
   window.addEventListener('resize', detectDevToolsOpen);
 
   // Log that protection is active
-  console.log('%cPrestige Men DevTools Protection Active', 'color: #111827; font-weight: bold; font-size: 14px;');
+  console.log('%cPrestige Collection DevTools Protection Active', 'color: #111827; font-weight: bold; font-size: 14px;');
 })();

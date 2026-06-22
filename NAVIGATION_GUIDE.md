@@ -1,6 +1,6 @@
 # Navigation System Guide
 
-This document explains how to manage the side panel (drawer/sidebar) menu items for the Prestige Men app.
+This document explains how to manage the side panel (drawer/sidebar) menu items for the Prestige Collection app.
 
 ## Overview
 

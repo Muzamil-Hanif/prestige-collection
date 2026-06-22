@@ -1,8 +1,8 @@
 class ApiConfig {
   // Single API base URL for every platform (Android/iOS/Web/Desktop).
-  // PRODUCTION: Use HTTPS URL (https://api.prestige-men.com)
+  // PRODUCTION: Use HTTPS URL (https://api.prestigecollection.com)
   // DEVELOPMENT: Use HTTP for local testing (http://192.168.1.100:3000)
-  // Example: flutter run --dart-define=API_BASE_URL=https://api.prestige-men.com
+  // Example: flutter run --dart-define=API_BASE_URL=https://api.prestigecollection.com
   static const String _configuredBaseUrl = String.fromEnvironment(
     'API_BASE_URL',
     // Use IPv4 loopback by default to avoid localhost -> ::1 issues.

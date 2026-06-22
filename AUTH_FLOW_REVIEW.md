@@ -411,7 +411,7 @@ debugPrint('Network error: ${error.toString()}');
 3. HTTPS not required for development
 
 ### For Production:
-1. Use HTTPS URLs only: `https://api.prestige-men.com`
+1. Use HTTPS URLs only: `https://api.prestigecollection.com`
 2. Build with `IS_PRODUCTION=true`
 3. Implement backend logout endpoint
 4. Enable SSL certificate pinning (Phase 2)

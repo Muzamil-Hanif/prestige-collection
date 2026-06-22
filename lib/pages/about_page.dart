@@ -19,7 +19,7 @@ class AboutPage extends StatelessWidget {
             const SizedBox(height: 16),
             Center(
               child: SvgPicture.asset(
-                'assets/images/prestige-men-logo-V4.svg',
+                'assets/images/prestige-collections-final.svg',
                 height: 120,
                 width: 120,
                 fit: BoxFit.contain,

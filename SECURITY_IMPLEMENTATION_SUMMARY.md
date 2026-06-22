@@ -88,7 +88,7 @@ if (_isTokenValid(token)) {
 flutter run --dart-define=API_BASE_URL=http://localhost:3000
 
 # Production (HTTPS enforced)
-flutter run --dart-define=API_BASE_URL=https://api.prestige-men.com \
+flutter run --dart-define=API_BASE_URL=https://api.prestigecollection.com \
             --dart-define=IS_PRODUCTION=true
 ```
 
@@ -166,17 +166,17 @@ flutter run --dart-define=API_BASE_URL=http://localhost:3000
 ```bash
 # iOS
 flutter build ios \
-  --dart-define=API_BASE_URL=https://api.prestige-men.com \
+  --dart-define=API_BASE_URL=https://api.prestigecollection.com \
   --dart-define=IS_PRODUCTION=true
 
 # Android
 flutter build apk \
-  --dart-define=API_BASE_URL=https://api.prestige-men.com \
+  --dart-define=API_BASE_URL=https://api.prestigecollection.com \
   --dart-define=IS_PRODUCTION=true
 
 # Web
 flutter build web \
-  --dart-define=API_BASE_URL=https://api.prestige-men.com \
+  --dart-define=API_BASE_URL=https://api.prestigecollection.com \
   --dart-define=IS_PRODUCTION=true
 ```
 
@@ -304,7 +304,7 @@ Add request integrity verification:
 For implementation questions or issues:
 1. Review `SECURITY.md` for detailed documentation
 2. Check test files for usage examples
-3. Contact security team at security@prestige-men.com
+3. Contact security team at security@prestigecollection.com
 
 ---
 

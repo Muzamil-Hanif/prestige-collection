@@ -45,12 +45,12 @@ SAFEPAY_MERCHANT_ID=your_merchant_id_here
 
 ```bash
 # Terminal 1 - Backend
-cd prestige-men-backend
+cd prestige-collection-backend
 npm run start:dev
 # Wait for: "Server running on port 3000"
 
 # Terminal 2 - Flutter
-cd PrestigeMen
+cd PrestigeCollection
 flutter run -d chrome
 # Wait for app to load
 ```

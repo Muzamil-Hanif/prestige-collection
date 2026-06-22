@@ -1,11 +1,11 @@
 {
-    "name": "PrestigeMen",
-    "short_name": "PrestigeMen",
+    "name": "Prestige Collection",
+    "short_name": "Prestige Collection",
     "start_url": ".",
     "display": "standalone",
     "background_color": "#ffffff",
     "theme_color": "#111827",
-    "description": "Prestige Men - Luxury Men's Accessories Store",
+    "description": "Prestige Collection - Luxury Accessories Store",
     "orientation": "portrait-primary",
     "prefer_related_applications": false,
     "icons": [

@@ -1,6 +1,6 @@
 # Test Credentials & Payment Methods
 
-This file contains test credentials for all payment methods used in Prestige Men. **DO NOT use in production.**
+This file contains test credentials for all payment methods used in Prestige Collection. **DO NOT use in production.**
 
 ---
 

@@ -31,7 +31,7 @@ After context compaction / summarization:
 - Search debouncing pattern
 
 ## Memory Files to Check
-- `.claude/projects/-Users-devexcel-management-PrestigeMen/memory/` — verify user, feedback, project, reference memories exist
+- `.claude/projects/-Users-devexcel-management-PrestigeCollection/memory/` — verify user, feedback, project, reference memories exist
 - CLAUDE.md — project instructions preserved
 - Recent git log — context of current branch
 

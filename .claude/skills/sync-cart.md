@@ -13,8 +13,8 @@ End-to-end test: Add item to cart locally → Verify persisted in SharedPreferen
 
 ## Prerequisites
 
-- Backend running: `cd prestige-men-backend && npm run start:dev`
-- Flutter running: `cd PrestigeMen && flutter run -d chrome`
+- Backend running: `cd prestige-collection-backend && npm run start:dev`
+- Flutter running: `cd PrestigeCollection && flutter run -d chrome`
 - Logged in user (auth token in SharedPreferences)
 
 ---

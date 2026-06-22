@@ -820,7 +820,7 @@ Questions?
 [Contact Support] | [View Order]
 
 Best regards,
-Prestige Men Team
+Prestige Collection Team
 ```
 
 ### Recovery Incentive Strategy
@@ -1007,7 +1007,7 @@ Webhook Pattern:
   - Timeout: 10 seconds
 ```
 
-### Prestige Men: Recommended Implementation (BEST PRACTICES)
+### Prestige Collection: Recommended Implementation (BEST PRACTICES)
 
 ```
 YOUR STANDARD WORKFLOW
@@ -1051,7 +1051,7 @@ ADMIN DASHBOARD: PAYMENT MONITORING
 ═══════════════════════════════════
 
 ┌────────────────────────────────────────────────────────┐
-│  Prestige Men Admin • Payment Management              │
+│  Prestige Collection Admin • Payment Management              │
 └────────────────────────────────────────────────────────┘
 
 📊 QUICK STATS
@@ -1392,7 +1392,7 @@ When to Use:
 Call Script:
 ───────────
 
-"Hi {CustomerName}, this is from Prestige Men.
+"Hi {CustomerName}, this is from Prestige Collection.
 I'm calling to verify your order #507f1f77 
 for PKR 550 placed today at 10:30 AM.
 
@@ -2167,7 +2167,7 @@ REQUEST:
   "merchantId": "your_merchant_id",
   "amount": 55000,                    // In paisa (PKR * 100)
   "orderRefNum": "507f1f77...",       // Your order ID
-  "orderDesc": "Order #507f1f77 - Prestige Men",
+  "orderDesc": "Order #507f1f77 - Prestige Collection",
   "currency": "PKR",
   "timestamp": 1687255800,            // Unix timestamp
   "customer": {
@@ -2176,7 +2176,7 @@ REQUEST:
     "mobileNumber": "+923009999999",  // E.164 format
     "name": "Ahmad Khan"
   },
-  "redirectUrl": "https://prestige-men.com/payment-callback"
+  "redirectUrl": "https://prestigecollection.com/payment-callback"
 }
 
 RESPONSE (Success):

@@ -21,7 +21,7 @@ curl -s http://localhost:3000/api/docs | head -20
 
 ### 2. Start Backend if Needed
 ```bash
-cd prestige-men-backend
+cd prestige-collection-backend
 npm run start:dev
 ```
 Wait for: `[Nest] ... Application successfully started`

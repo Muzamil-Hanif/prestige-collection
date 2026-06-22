@@ -1,4 +1,4 @@
-# GitHub Setup Guide for Prestige Men App
+# GitHub Setup Guide for Prestige Collection App
 
 ## ✅ Step 1: Create GitHub Repository
 
@@ -7,7 +7,7 @@
 3. Select **"New repository"**
 4. Fill in the details:
    - **Repository name**: `prestige-men` (or any name you prefer)
-   - **Description**: "Prestige Men - Luxury Men's Accessories Store Flutter App"
+   - **Description**: "Prestige Collection - Luxury Men's Accessories Store Flutter App"
    - **Visibility**: Choose **Public** (free) or **Private** (if you have GitHub Pro)
    - **DO NOT** check "Initialize with README" (we already have one)
    - **DO NOT** add .gitignore or license (we already have them)
@@ -18,8 +18,8 @@
 After creating the repository, GitHub will show you a page with setup instructions.
 Copy the repository URL. It will look like:
 
-- `https://github.com/muzamilhanif37/prestige-men.git` (HTTPS)
-- OR `git@github.com:muzamilhanif37/prestige-men.git` (SSH)
+- `https://github.com/muzamilhanif37/prestige-collection.git` (HTTPS)
+- OR `git@github.com:muzamilhanif37/prestige-collection.git` (SSH)
 
 ## ✅ Step 3: Connect Local Repository to GitHub
 
@@ -39,7 +39,7 @@ git push -u origin main
 **Example:**
 
 ```bash
-git remote add origin https://github.com/muzamilhanif37/prestige-men.git
+git remote add origin https://github.com/muzamilhanif37/prestige-collection.git
 git push -u origin main
 ```
 

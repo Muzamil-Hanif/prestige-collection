@@ -54,7 +54,7 @@ When testing on a real device (like your iPhone 14 Pro), you need to:
 
 3. **Make sure your backend is running:**
    ```bash
-   cd prestige-men-backend
+   cd prestige-collection-backend
    npm run start:dev
    ```
 
@@ -64,7 +64,7 @@ When testing on a real device (like your iPhone 14 Pro), you need to:
 
 1. Navigate to backend directory:
    ```bash
-   cd prestige-men-backend
+   cd prestige-collection-backend
    ```
 
 2. Create `.env` file (copy from `.env.example`):

@@ -12,7 +12,7 @@ class StorageService {
   static const String _tokenExpiryKey = 'token_expiry';
 
   static const FlutterSecureStorage _secureStorage = FlutterSecureStorage(
-    webOptions: WebOptions(dbName: 'prestige_men_secure', publicKey: 'prestige_men_key'),
+    webOptions: WebOptions(dbName: 'prestige_collection_secure', publicKey: 'prestige_collection_key'),
   );
 
   // On web, flutter_secure_storage can fail intermittently (WebCrypto API

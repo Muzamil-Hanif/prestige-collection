@@ -6,7 +6,7 @@ disable-model-invocation: true
 allowed-tools: Bash(flutter *) Bash(dart *)
 ---
 
-Build PrestigeMen for the target platform: $ARGUMENTS
+Build PrestigeCollection for the target platform: $ARGUMENTS
 
 Steps:
 1. `flutter clean`

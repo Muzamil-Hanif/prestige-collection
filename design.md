@@ -1,4 +1,4 @@
-/mco# Design System — Prestige Men
+/mco# Design System — Prestige Collection
 
 Design tokens and component styles for UI consistency across all modules.
 

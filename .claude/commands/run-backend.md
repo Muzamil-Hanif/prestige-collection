@@ -4,6 +4,6 @@ allowed-tools: Bash(cd *) Bash(npm run *)
 disable-model-invocation: true
 ---
 
-Start the PrestigeMen backend:
+Start the PrestigeCollection backend:
 
-1. Run `cd /Users/devexcel-management/prestige-men-backend && npm run start:dev`
+1. Run `cd /Users/devexcel-management/prestige-collection-backend && npm run start:dev`

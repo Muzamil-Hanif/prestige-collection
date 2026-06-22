@@ -1,6 +1,6 @@
-# Prestige Men
+# Prestige Collection
 
-Prestige Men - Luxury Men's Accessories E-commerce Platform
+Prestige Collection - Luxury Men's Accessories E-commerce Platform
 
 A Flutter mobile/web/desktop app for luxury men's accessories shopping, backed by a NestJS API.
 

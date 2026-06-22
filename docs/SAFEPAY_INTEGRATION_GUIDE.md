@@ -1,6 +1,6 @@
 # SafePay Payment Gateway Integration Guide
 
-This guide walks you through setting up SafePay as the payment gateway for Prestige Men e-commerce platform. The integration uses the **Hosted Page** approach, which is the safest method for accepting payments.
+This guide walks you through setting up SafePay as the payment gateway for Prestige Collection e-commerce platform. The integration uses the **Hosted Page** approach, which is the safest method for accepting payments.
 
 ## What We've Integrated
 
@@ -36,7 +36,7 @@ This guide walks you through setting up SafePay as the payment gateway for Prest
 
 1. Copy environment variables:
    ```bash
-   cd prestige-men-backend
+   cd prestige-collection-backend
    cp .env.example .env
    ```
 
@@ -58,7 +58,7 @@ This guide walks you through setting up SafePay as the payment gateway for Prest
 
 1. Update `.env` or build configuration:
    ```bash
-   cd PrestigeMen
+   cd PrestigeCollection
    flutter pub get
    ```
 
@@ -71,19 +71,19 @@ This guide walks you through setting up SafePay as the payment gateway for Prest
 
 **Terminal 1 - Backend:**
 ```bash
-cd prestige-men-backend
+cd prestige-collection-backend
 npm run start:dev
 ```
 
 **Terminal 2 - Frontend (Web):**
 ```bash
-cd PrestigeMen
+cd PrestigeCollection
 flutter run -d chrome --dart-define=API_BASE_URL=http://localhost:3000
 ```
 
 **Terminal 2 - Frontend (Mobile):**
 ```bash
-cd PrestigeMen
+cd PrestigeCollection
 # First get your local IP
 ipconfig getifaddr en0  # macOS
 # Then run with your IP

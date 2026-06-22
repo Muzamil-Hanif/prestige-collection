@@ -15,7 +15,7 @@ flutter build apk                        # Build Android APK
 flutter build ios                        # Build iOS
 
 # Production builds with security enforcement
-flutter run --dart-define=API_BASE_URL=https://api.prestige-men.com \
+flutter run --dart-define=API_BASE_URL=https://api.prestigecollection.com \
             --dart-define=IS_PRODUCTION=true
 ```
 
@@ -123,7 +123,7 @@ When user selects Credit/Debit Card:
 ## Backend Integration Requirements
 
 ### Logout Endpoint (CRITICAL)
-The app now calls `POST /api/auth/logout` when user logs out. Add to `prestige-men-backend`:
+The app now calls `POST /api/auth/logout` when user logs out. Add to `prestige-collection-backend`:
 
 ```typescript
 // In auth.controller.ts

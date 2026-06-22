@@ -85,7 +85,7 @@ curl -X PUT http://localhost:3000/api/orders/{orderId}/payment/verify \
 
 #### Option B: Using Postman
 
-1. **Import the collection** from `prestige-men-backend/docs`
+1. **Import the collection** from `prestige-collection-backend/docs`
 2. **Use endpoint:** `PUT /api/orders/{orderId}/payment/verify`
 3. **Headers:**
    ```
@@ -356,7 +356,7 @@ SAFEPAY_REDIRECT_URL=http://localhost:3000
 ### Start Backend
 
 ```bash
-cd prestige-men-backend
+cd prestige-collection-backend
 npm run start:dev
 ```
 
@@ -367,7 +367,7 @@ Verify SafePay is working:
 ### Start Flutter App
 
 ```bash
-cd PrestigeMen
+cd PrestigeCollection
 flutter run -d chrome  # or -d macos
 ```
 

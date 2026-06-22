@@ -5,7 +5,7 @@ description: "Inspect app state, trace mutations, validate state consistency bet
 
 # State Management Debugger
 
-Debug and inspect the PrestigeMen app's state management system. Trace how data flows through SharedPreferences, MainScreen state, and user interactions.
+Debug and inspect the PrestigeCollection app's state management system. Trace how data flows through SharedPreferences, MainScreen state, and user interactions.
 
 ## What It Does
 

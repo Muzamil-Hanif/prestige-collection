@@ -1,7 +1,7 @@
 import 'package:flutter/material.dart';
 
 /// Canonical order fulfillment lifecycle stages, mirroring the
-/// `Order.status` enum in `prestige-men-backend` and the staged tracking
+/// `Order.status` enum in `prestige-collection-backend` and the staged tracking
 /// experience used by Daraz/Amazon-style order screens.
 enum OrderStage {
   placed,

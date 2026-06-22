@@ -1,6 +1,6 @@
 # Security Implementation Guide
 
-This document outlines the security improvements implemented in the Prestige Men Flutter app.
+This document outlines the security improvements implemented in the Prestige Collection Flutter app.
 
 ## Implemented Security Measures
 
@@ -59,7 +59,7 @@ if (_isTokenValid(token)) {
 **How to enable:**
 ```bash
 # Production build with HTTPS enforcement
-flutter run --dart-define=API_BASE_URL=https://api.prestige-men.com \
+flutter run --dart-define=API_BASE_URL=https://api.prestigecollection.com \
             --dart-define=IS_PRODUCTION=true
 
 # Development build (allows HTTP)
@@ -155,11 +155,11 @@ flutter run --dart-define=API_BASE_URL=http://localhost:3000
 **Production:**
 ```bash
 flutter build apk \
-  --dart-define=API_BASE_URL=https://api.prestige-men.com \
+  --dart-define=API_BASE_URL=https://api.prestigecollection.com \
   --dart-define=IS_PRODUCTION=true
 
 flutter build ios \
-  --dart-define=API_BASE_URL=https://api.prestige-men.com \
+  --dart-define=API_BASE_URL=https://api.prestigecollection.com \
   --dart-define=IS_PRODUCTION=true
 ```
 
@@ -298,4 +298,4 @@ test('HTTPS is enforced in production', () {
 
 ## Contact
 
-For security concerns or questions, please contact the security team at security@prestige-men.com
+For security concerns or questions, please contact the security team at security@prestigecollection.com

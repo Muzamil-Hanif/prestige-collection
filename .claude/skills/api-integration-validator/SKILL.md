@@ -57,7 +57,7 @@ Ask natural questions about API integration:
 - Falls back to HTTP status code if JSON parsing fails
 - Wraps all errors in Exception with context (e.g., "Login failed: ...")
 
-### Backend API Layer (NestJS prestige-men-backend)
+### Backend API Layer (NestJS prestige-collection-backend)
 
 **Controllers:**
 - `AppController` — `GET /api` (health check)

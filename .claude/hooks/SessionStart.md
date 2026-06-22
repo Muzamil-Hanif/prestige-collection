@@ -10,8 +10,8 @@ You are now starting a new coding session.
 ## Quick Reference
 
 ### Stack
-- **Frontend:** Flutter (Dart) — `/PrestigeMen/`
-- **Backend:** NestJS (TypeScript) — `/prestige-men-backend/`
+- **Frontend:** Flutter (Dart) — `/PrestigeCollection/`
+- **Backend:** NestJS (TypeScript) — `/prestige-collection-backend/`
 - **State:** SharedPreferences + in-memory (MainScreen callbacks)
 - **API:** REST with JWT auth
 
@@ -25,7 +25,7 @@ You are now starting a new coding session.
 ```bash
 flutter pub get && flutter run -d chrome              # Web dev
 flutter run --dart-define=API_BASE_URL=http://IP:3000  # Device
-cd ../prestige-men-backend && npm run start:dev      # Backend
+cd ../prestige-collection-backend && npm run start:dev      # Backend
 ```
 
 ## Checklist
