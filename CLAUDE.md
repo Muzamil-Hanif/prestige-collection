@@ -107,9 +107,10 @@ When user selects Credit/Debit Card:
 1. **Initiate:** `CheckoutPage` calls `SafePayService.initiatePayment()` → backend returns SafePay checkout URL + requestId
 2. **External Page:** `SafePayService.launchPaymentPage()` opens SafePay in external browser (card details never touch app)
 3. **Deep Link:** `DeepLinkService` listens for `prestigecollection://payment-callback?...` deep link from SafePay redirect
-4. **Verification Retry:** When deep link received, `CheckoutPage._verifyAndCompletePayment()` retries verification up to 4 times with exponential backoff (1.5s, 3s, 4.5s, 6s). SafePay webhooks take 3-5s to process, so immediate verification would fail.
-5. **Success:** On successful verification, shows order confirmation dialog and clears cart
-6. **Fallback:** If all retries fail, error message directs user to check email or My Orders page (webhook may still be processing)
+4. **Verification Retry:** When deep link received, `CheckoutPage._verifyAndCompletePayment()` retries verification up to 4 times with exponential backoff (1.5s, 3s, 4.5s, 6s). SafePay webhooks take 3-5s to process, so immediate verification would fail. Backend supports fallback using `requestId` if tracker token isn't available yet.
+5. **Enhanced Feedback:** `SafePaymentResult.note` contains backend status details (e.g., "Webhook processing in progress...") and is displayed in error messages to users
+6. **Success:** On successful verification, shows order confirmation dialog and clears cart
+7. **Fallback:** If all retries fail, error message with detailed status directs user to check email or My Orders page (webhook may still be processing)
 
 **Deep Link Configuration:**
 - Android: Manifest intent-filter for `prestigecollection://payment-callback` (AndroidManifest.xml line 29-34)
@@ -182,3 +183,4 @@ See `design.md` for complete palette, component styles, and usage examples.
 - **Image normalization**: `ApiService` strips Google Images wrapper URLs to extract direct image URLs from product data.
 - **Token Validation**: Every API request validates token expiration before attaching to headers.
 - **HTTPS Enforcement**: Production builds enforce HTTPS via `IS_PRODUCTION` flag.
+- **Payment Verification Error Handling**: `SafePayService.verifyPaymentStatus()` returns detailed `note` field from backend (e.g., "Webhook processing in progress..."). `CheckoutPage._verifyAndCompletePayment()` displays these notes in error SnackBar to provide users with clear feedback about what's happening. Includes 4-attempt exponential backoff (1.5–6s) and graceful fallback when webhook hasn't confirmed yet.

@@ -672,6 +672,7 @@ class _CheckoutPageState extends State<CheckoutPage> {
       const baseDuration = Duration(milliseconds: 1500);
       late SafePaymentResult verificationResult;
       bool verified = false;
+      String lastErrorNote = '';
 
       for (int attempt = 0; attempt < maxAttempts; attempt++) {
         await Future.delayed(
@@ -687,17 +688,21 @@ class _CheckoutPageState extends State<CheckoutPage> {
 
         if (verificationResult.success) {
           verified = true;
+          debugPrint('✓ Payment verification successful on attempt ${attempt + 1}');
           break;
         }
 
+        lastErrorNote = verificationResult.note ?? 'Webhook processing in progress...';
         debugPrint(
-          'Payment verification attempt ${attempt + 1}/$maxAttempts: ${verificationResult.message}',
+          'Payment verification attempt ${attempt + 1}/$maxAttempts: '
+          '${verificationResult.message} - $lastErrorNote',
         );
 
         // On last attempt, show user what we got
         if (attempt == maxAttempts - 1) {
           debugPrint(
-            'Final verification attempt failed. Webhook may still be processing.',
+            'Final verification attempt failed after ${(baseDuration * maxAttempts).inSeconds}s. '
+            'Status: $lastErrorNote',
           );
         }
       }
@@ -710,12 +715,13 @@ class _CheckoutPageState extends State<CheckoutPage> {
       } else {
         ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(
-            content: const Text(
+            content: Text(
               'Payment verification is taking longer than expected. '
-              'Please check your email or the My Orders page for order status.',
+              '$lastErrorNote\n\n'
+              'You can check your email or the My Orders page for order status.',
             ),
             backgroundColor: Theme.of(context).colorScheme.error,
-            duration: const Duration(seconds: 4),
+            duration: const Duration(seconds: 5),
           ),
         );
         setState(() => _isPlacingOrder = false);
@@ -727,6 +733,7 @@ class _CheckoutPageState extends State<CheckoutPage> {
           SnackBar(
             content: Text('Verification error: ${e.toString()}'),
             backgroundColor: Theme.of(context).colorScheme.error,
+            duration: const Duration(seconds: 4),
           ),
         );
         setState(() => _isPlacingOrder = false);

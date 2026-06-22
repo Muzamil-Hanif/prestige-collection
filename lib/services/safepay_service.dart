@@ -11,6 +11,7 @@ class SafePaymentResult {
   final String? message;
   final String? requestId;
   final String? redirectUrl;
+  final String? note;
 
   SafePaymentResult({
     required this.success,
@@ -18,6 +19,7 @@ class SafePaymentResult {
     this.message,
     this.requestId,
     this.redirectUrl,
+    this.note,
   });
 }
 
@@ -149,11 +151,13 @@ class SafePayService {
           success: success,
           transactionId: data['transactionId'] as String?,
           message: success ? 'Payment successful' : 'Payment failed',
+          note: data['note'] as String?,
         );
       } else {
         return SafePaymentResult(
           success: false,
           message: _extractErrorMessage(response.body, 'Failed to verify payment'),
+          note: 'Server error - payment status could not be verified',
         );
       }
     } catch (e) {
@@ -161,6 +165,7 @@ class SafePayService {
       return SafePaymentResult(
         success: false,
         message: 'Failed to verify payment: $e',
+        note: 'Network error - check your connection and try again',
       );
     }
   }
