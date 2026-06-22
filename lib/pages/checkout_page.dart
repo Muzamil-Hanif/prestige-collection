@@ -667,26 +667,55 @@ class _CheckoutPageState extends State<CheckoutPage> {
     _showPaymentVerificationDialog();
 
     try {
-      await Future.delayed(const Duration(seconds: 2)); // Give SafePay time to process
+      // SafePay webhook processing can take 3-5 seconds, so we retry with exponential backoff
+      const maxAttempts = 4;
+      const baseDuration = Duration(milliseconds: 1500);
+      late SafePaymentResult verificationResult;
+      bool verified = false;
 
-      final verificationResult = await SafePayService.verifyPaymentStatus(
-        orderId: orderId,
-        requestId: requestId,
-      );
+      for (int attempt = 0; attempt < maxAttempts; attempt++) {
+        await Future.delayed(
+          baseDuration * (attempt + 1), // 1.5s, 3s, 4.5s, 6s
+        );
+
+        if (!mounted) return;
+
+        verificationResult = await SafePayService.verifyPaymentStatus(
+          orderId: orderId,
+          requestId: requestId,
+        );
+
+        if (verificationResult.success) {
+          verified = true;
+          break;
+        }
+
+        debugPrint(
+          'Payment verification attempt ${attempt + 1}/$maxAttempts: ${verificationResult.message}',
+        );
+
+        // On last attempt, show user what we got
+        if (attempt == maxAttempts - 1) {
+          debugPrint(
+            'Final verification attempt failed. Webhook may still be processing.',
+          );
+        }
+      }
 
       if (!mounted) return;
       Navigator.of(context).pop(); // Close verification dialog
 
-      if (verificationResult.success) {
+      if (verified) {
         _showOrderSuccessDialog(Theme.of(context).colorScheme);
       } else {
         ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(
-            content: Text(
-              'Payment verification failed: ${verificationResult.message}',
+            content: const Text(
+              'Payment verification is taking longer than expected. '
+              'Please check your email or the My Orders page for order status.',
             ),
             backgroundColor: Theme.of(context).colorScheme.error,
-            duration: const Duration(seconds: 3),
+            duration: const Duration(seconds: 4),
           ),
         );
         setState(() => _isPlacingOrder = false);
