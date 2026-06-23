@@ -118,7 +118,6 @@ class _SplashScreenState extends State<SplashScreen> with SingleTickerProviderSt
                         ),
                         child: SvgPicture.asset(
                           'assets/images/prestige-collections-white-nobg.svg',
-                          // 'assets/images/prestige-men-logo-V5.svg',
                           height: 120,
                           width: 120,
                           fit: BoxFit.contain,

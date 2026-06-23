@@ -100,12 +100,14 @@ flutter:
 flutter_launcher_icons:
   android: true
   ios: true
-  image_path: "assets/images/prestige-men-logo-V4-white-bg.png"
+  image_path: "assets/images/prestige-collections-icon-dark.png"
+  adaptive_icon_background: "#111827"
+  adaptive_icon_foreground: "assets/images/prestige-collections-icon-foreground.png"
   min_sdk_android: 21 # android min sdk min:16, default 21
   web:
     generate: true
-    image_path: "assets/images/prestige-men-logo-V4-white-bg.png"
-    background_color: "#ffffff"
+    image_path: "assets/images/prestige-collections-icon-dark.png"
+    background_color: "#111827"
     theme_color: "#111827"
   windows:
     generate: true
