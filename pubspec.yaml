@@ -1,5 +1,5 @@
-name: prestige_men
-description: "Prestige Men - Luxury Men's Accessories Store"
+name: prestige_collection
+description: "Prestige Collection - Luxury Accessories Store"
 # The following line prevents the package from being accidentally published to
 # pub.dev using `flutter pub publish`. This is preferred for private packages.
 publish_to: "none" # Remove this line if you wish to publish to pub.dev
@@ -35,6 +35,14 @@ dependencies:
   # Use with the CupertinoIcons class for iOS style icons.
   cupertino_icons: ^1.0.8
   flutter_svg: ^2.0.9
+  http: ^1.2.0
+  shared_preferences: ^2.2.2
+  image_picker: ^1.1.2
+  flutter_secure_storage: ^9.2.0
+  jwt_decoder: ^2.0.1
+  webview_flutter: ^4.7.0
+  url_launcher: ^6.2.0
+  app_links: ^6.3.2
 
 dev_dependencies:
   flutter_test:
@@ -92,12 +100,14 @@ flutter:
 flutter_launcher_icons:
   android: true
   ios: true
-  image_path: "assets/images/prestige-men-logo-V4-white-bg.png"
+  image_path: "assets/images/prestige-collections-icon-dark.png"
+  adaptive_icon_background: "#111827"
+  adaptive_icon_foreground: "assets/images/prestige-collections-icon-foreground.png"
   min_sdk_android: 21 # android min sdk min:16, default 21
   web:
     generate: true
-    image_path: "assets/images/prestige-men-logo-V4-white-bg.png"
-    background_color: "#ffffff"
+    image_path: "assets/images/prestige-collections-icon-dark.png"
+    background_color: "#111827"
     theme_color: "#111827"
   windows:
     generate: true

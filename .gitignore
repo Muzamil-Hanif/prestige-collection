@@ -49,6 +49,10 @@ android/local.properties
 *.key
 *.jks
 
+# MCP configuration with secrets
+.mcp.json
+.mcp.json.local
+
 # Python cache (but keep .py files)
 __pycache__/
 *.pyc

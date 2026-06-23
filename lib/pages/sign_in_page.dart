@@ -1,6 +1,8 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_svg/flutter_svg.dart';
 import '../main.dart' show MainScreen;
+import '../services/api_service.dart';
+import '../utils/responsive.dart';
 import 'sign_up_page.dart';
 import 'forgot_password_page.dart';
 
@@ -25,24 +27,42 @@ class _SignInPageState extends State<SignInPage> {
     super.dispose();
   }
 
-  void _handleSignIn() {
+  void _handleSignIn() async {
     if (_formKey.currentState!.validate()) {
       setState(() {
         _isLoading = true;
       });
 
-      // Simulate API call
-      Future.delayed(const Duration(seconds: 1), () {
+      try {
+        // Call API to login
+        await ApiService.login(
+          _emailController.text.trim(),
+          _passwordController.text,
+        );
+
         if (mounted) {
           setState(() {
             _isLoading = false;
           });
-          // Navigate to main screen (no actual authentication for now)
+          // Navigate to main screen
           Navigator.of(context).pushReplacement(
             MaterialPageRoute(builder: (context) => const MainScreen()),
           );
         }
-      });
+      } catch (e) {
+        if (mounted) {
+          setState(() {
+            _isLoading = false;
+          });
+          ScaffoldMessenger.of(context).showSnackBar(
+            SnackBar(
+              content: Text(e.toString().replaceAll('Exception: ', '')),
+              backgroundColor: Colors.red,
+              duration: const Duration(seconds: 3),
+            ),
+          );
+        }
+      }
     }
   }
 
@@ -52,9 +72,12 @@ class _SignInPageState extends State<SignInPage> {
     return Scaffold(
       backgroundColor: const Color(0xFFF5F5F5),
       body: SafeArea(
-        child: SingleChildScrollView(
-          padding: const EdgeInsets.all(24.0),
-          child: Form(
+        child: Center(
+          child: ConstrainedBox(
+            constraints: const BoxConstraints(maxWidth: 480),
+            child: SingleChildScrollView(
+              padding: const EdgeInsets.all(24.0),
+              child: Form(
             key: _formKey,
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.stretch,
@@ -63,13 +86,14 @@ class _SignInPageState extends State<SignInPage> {
                 // Logo
                 Center(
                   child: SvgPicture.asset(
-                    'assets/images/prestige-men-logo-V4.svg',
-                    height: 120,
-                    width: 120,
+                    'assets/images/prestige-collections-final.svg',
+                    // 'assets/images/prestige-men-logo-V4.svg',
+                    height: Responsive.logoSize(context),
+                    width: Responsive.logoSize(context),
                     fit: BoxFit.contain,
                   ),
                 ),
-                const SizedBox(height: 32),
+                const SizedBox(height: 22),
                 // Title
                 const Text(
                   'Welcome',
@@ -267,6 +291,8 @@ class _SignInPageState extends State<SignInPage> {
                   ],
                 ),
               ],
+            ),
+              ),
             ),
           ),
         ),

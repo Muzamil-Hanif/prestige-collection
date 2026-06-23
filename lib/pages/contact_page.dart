@@ -2,7 +2,6 @@ import 'package:flutter/material.dart';
 
 class ContactPage extends StatelessWidget {
   const ContactPage({super.key});
-
   @override
   Widget build(BuildContext context) {
     return Scaffold(
@@ -148,6 +147,7 @@ class ContactPage extends StatelessWidget {
                     const SnackBar(
                       content: Text('Message sent successfully!'),
                       backgroundColor: Colors.green,
+                      duration: Duration(seconds: 3),
                     ),
                   );
                 },
@@ -209,7 +209,10 @@ class ContactPage extends StatelessWidget {
           icon: const Icon(Icons.arrow_forward_ios, size: 16),
           onPressed: () {
             ScaffoldMessenger.of(context).showSnackBar(
-              SnackBar(content: Text('Opening $title')),
+              SnackBar(
+                content: Text('Opening $title'),
+                duration: const Duration(seconds: 3),
+              ),
             );
           },
         ),

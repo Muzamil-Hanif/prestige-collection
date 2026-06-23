@@ -19,15 +19,15 @@ class AboutPage extends StatelessWidget {
             const SizedBox(height: 16),
             Center(
               child: SvgPicture.asset(
-                'assets/images/prestige-men-logo-V3.svg',
-                height: 150,
-                width: 150,
+                'assets/images/prestige-collections-final.svg',
+                height: 120,
+                width: 120,
                 fit: BoxFit.contain,
               ),
             ),
             const SizedBox(height: 24),
             Text(
-              'Prestige Men',
+              'Prestige Collection',
               style: TextStyle(
                 fontSize: 28,
                 fontWeight: FontWeight.bold,
@@ -55,7 +55,7 @@ class AboutPage extends StatelessWidget {
             ),
             const SizedBox(height: 12),
             Text(
-              'Welcome to Prestige Men, your premier destination for high-quality men\'s accessories. We specialize in offering the finest selection of perfumes, watches, and wallets for the modern gentleman.',
+              'Welcome to Prestige Collection, your premier destination for high-quality men\'s accessories. We specialize in offering the finest selection of perfumes, watches, and wallets for the modern gentleman.',
               style: TextStyle(
                 fontSize: 16,
                 height: 1.6,

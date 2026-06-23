@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_svg/flutter_svg.dart';
-import '../main.dart' show MainScreen;
+import '../services/api_service.dart';
+import '../utils/responsive.dart';
 import 'sign_in_page.dart';
 
 class SignUpPage extends StatefulWidget {
@@ -29,24 +30,44 @@ class _SignUpPageState extends State<SignUpPage> {
     super.dispose();
   }
 
-  void _handleSignUp() {
+  void _handleSignUp() async {
     if (_formKey.currentState!.validate()) {
       setState(() {
         _isLoading = true;
       });
 
-      // Simulate API call
-      Future.delayed(const Duration(seconds: 1), () {
+      try {
+        // Call API to register
+        await ApiService.register(
+          _emailController.text.trim(),
+          _passwordController.text,
+          _nameController.text.trim(),
+          null, // phoneNumber is optional
+        );
+
         if (mounted) {
           setState(() {
             _isLoading = false;
           });
-          // Navigate to main screen (no actual authentication for now)
+          // Navigate to sign in screen after successful registration
           Navigator.of(context).pushReplacement(
-            MaterialPageRoute(builder: (context) => const MainScreen()),
+            MaterialPageRoute(builder: (context) => const SignInPage()),
           );
         }
-      });
+      } catch (e) {
+        if (mounted) {
+          setState(() {
+            _isLoading = false;
+          });
+          ScaffoldMessenger.of(context).showSnackBar(
+            SnackBar(
+              content: Text(e.toString().replaceAll('Exception: ', '')),
+              backgroundColor: Colors.red,
+              duration: const Duration(seconds: 3),
+            ),
+          );
+        }
+      }
     }
   }
 
@@ -59,14 +80,17 @@ class _SignUpPageState extends State<SignUpPage> {
         backgroundColor: Colors.transparent,
         elevation: 0,
         leading: IconButton(
-          icon: const Icon(Icons.arrow_back, color: Colors.black87),
+          icon: const Icon(Icons.arrow_back, color: Colors.black),
           onPressed: () => Navigator.of(context).pop(),
         ),
       ),
       body: SafeArea(
-        child: SingleChildScrollView(
-          padding: const EdgeInsets.symmetric(horizontal: 24),
-          child: Form(
+        child: Center(
+          child: ConstrainedBox(
+            constraints: const BoxConstraints(maxWidth: 480),
+            child: SingleChildScrollView(
+              padding: const EdgeInsets.symmetric(horizontal: 24),
+              child: Form(
             key: _formKey,
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.stretch,
@@ -75,9 +99,10 @@ class _SignUpPageState extends State<SignUpPage> {
                 // Logo
                 Center(
                   child: SvgPicture.asset(
-                    'assets/images/prestige-men-logo-V4.svg',
-                    height: 120,
-                    width: 120,
+                    // 'assets/images/prestige-men-logo-V4.svg',
+                    'assets/images/prestige-collections-final.svg',
+                    height: Responsive.logoSize(context),
+                    width: Responsive.logoSize(context),
                     fit: BoxFit.contain,
                   ),
                 ),
@@ -341,6 +366,8 @@ class _SignUpPageState extends State<SignUpPage> {
                   ],
                 ),
               ],
+            ),
+              ),
             ),
           ),
         ),

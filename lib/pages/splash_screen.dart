@@ -1,7 +1,9 @@
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_svg/flutter_svg.dart';
+import '../main.dart' show MainScreen;
 import 'sign_in_page.dart';
+import '../services/storage_service.dart';
 
 class SplashScreen extends StatefulWidget {
   const SplashScreen({super.key});
@@ -49,14 +51,21 @@ class _SplashScreenState extends State<SplashScreen> with SingleTickerProviderSt
 
     _animationController.forward();
 
-    // Navigate to sign in screen after splash duration
-    Future.delayed(const Duration(seconds: 10), () {
-      if (mounted) {
-        Navigator.of(context).pushReplacement(
-          MaterialPageRoute(builder: (context) => const SignInPage()),
-        );
-      }
-    });
+    _navigateAfterSplash();
+  }
+
+  Future<void> _navigateAfterSplash() async {
+    await Future.delayed(const Duration(seconds: 10));
+    if (!mounted) return;
+
+    final isLoggedIn = await StorageService.isLoggedIn();
+    if (!mounted) return;
+
+    Navigator.of(context).pushReplacement(
+      MaterialPageRoute(
+        builder: (context) => isLoggedIn ? const MainScreen() : const SignInPage(),
+      ),
+    );
   }
 
   @override
@@ -108,7 +117,7 @@ class _SplashScreenState extends State<SplashScreen> with SingleTickerProviderSt
                           borderRadius: BorderRadius.circular(20),
                         ),
                         child: SvgPicture.asset(
-                          'assets/images/prestige-men-logo-V5.svg',
+                          'assets/images/prestige-collections-white-nobg.svg',
                           height: 120,
                           width: 120,
                           fit: BoxFit.contain,

@@ -89,13 +89,13 @@ BEGIN
     BEGIN
         BLOCK "040904e4"
         BEGIN
-            VALUE "CompanyName", "PrestigeMen" "\0"
-            VALUE "FileDescription", "PrestigeMen" "\0"
+            VALUE "CompanyName", "Prestige Collection" "\0"
+            VALUE "FileDescription", "Prestige Collection" "\0"
             VALUE "FileVersion", VERSION_AS_STRING "\0"
-            VALUE "InternalName", "prestige_men" "\0"
-            VALUE "LegalCopyright", "Copyright (C) 2025 PrestigeMen. All rights reserved." "\0"
-            VALUE "OriginalFilename", "prestige_men.exe" "\0"
-            VALUE "ProductName", "PrestigeMen" "\0"
+            VALUE "InternalName", "prestige_collection" "\0"
+            VALUE "LegalCopyright", "Copyright (C) 2025 Prestige Collection. All rights reserved." "\0"
+            VALUE "OriginalFilename", "prestige_collection.exe" "\0"
+            VALUE "ProductName", "Prestige Collection" "\0"
             VALUE "ProductVersion", VERSION_AS_STRING "\0"
         END
     END

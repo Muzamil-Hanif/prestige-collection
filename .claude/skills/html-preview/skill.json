@@ -1,0 +1,18 @@
+{
+  "name": "html-preview",
+  "description": "Open HTML content or files in the default external browser for preview",
+  "version": "1.0.0",
+  "triggers": [
+    "preview html",
+    "open in browser",
+    "view html",
+    "html preview"
+  ],
+  "usage": "/html-preview <file-path-or-html-content>",
+  "examples": [
+    "/html-preview ./output/report.html",
+    "/html-preview '<html><body><h1>Hello</h1></body></html>'",
+    "/html-preview /tmp/generated-page.html"
+  ],
+  "author": "Claude Code"
+}

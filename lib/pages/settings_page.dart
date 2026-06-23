@@ -48,7 +48,10 @@ class _SettingsPageState extends State<SettingsPage> {
             trailing: const Icon(Icons.chevron_right),
             onTap: () {
               ScaffoldMessenger.of(context).showSnackBar(
-                const SnackBar(content: Text('Profile page coming soon')),
+                const SnackBar(
+                  content: Text('Profile page coming soon'),
+                  duration: Duration(seconds: 3),
+                ),
               );
             },
           ),
@@ -67,7 +70,10 @@ class _SettingsPageState extends State<SettingsPage> {
             trailing: const Icon(Icons.chevron_right),
             onTap: () {
               ScaffoldMessenger.of(context).showSnackBar(
-                const SnackBar(content: Text('Address management coming soon')),
+                const SnackBar(
+                  content: Text('Address management coming soon'),
+                  duration: Duration(seconds: 3),
+                ),
               );
             },
           ),
@@ -95,7 +101,10 @@ class _SettingsPageState extends State<SettingsPage> {
             trailing: const Icon(Icons.chevron_right),
             onTap: () {
               ScaffoldMessenger.of(context).showSnackBar(
-                const SnackBar(content: Text('Payment methods coming soon')),
+                const SnackBar(
+                  content: Text('Payment methods coming soon'),
+                  duration: Duration(seconds: 3),
+                ),
               );
             },
           ),
@@ -255,7 +264,10 @@ class _SettingsPageState extends State<SettingsPage> {
                 _darkMode = value;
               });
               ScaffoldMessenger.of(context).showSnackBar(
-                SnackBar(content: Text('Dark mode ${value ? 'enabled' : 'disabled'}')),
+                SnackBar(
+                  content: Text('Dark mode ${value ? 'enabled' : 'disabled'}'),
+                  duration: const Duration(seconds: 3),
+                ),
               );
             },
           ),
@@ -279,7 +291,10 @@ class _SettingsPageState extends State<SettingsPage> {
             trailing: const Icon(Icons.chevron_right),
             onTap: () {
               ScaffoldMessenger.of(context).showSnackBar(
-                const SnackBar(content: Text('Help center coming soon')),
+                const SnackBar(
+                  content: Text('Help center coming soon'),
+                  duration: Duration(seconds: 3),
+                ),
               );
             },
           ),
@@ -299,7 +314,10 @@ class _SettingsPageState extends State<SettingsPage> {
             trailing: const Icon(Icons.chevron_right),
             onTap: () {
               ScaffoldMessenger.of(context).showSnackBar(
-                const SnackBar(content: Text('Feedback form coming soon')),
+                const SnackBar(
+                  content: Text('Feedback form coming soon'),
+                  duration: Duration(seconds: 3),
+                ),
               );
             },
           ),
@@ -355,7 +373,10 @@ class _SettingsPageState extends State<SettingsPage> {
                       onPressed: () {
                         Navigator.pop(context);
                         ScaffoldMessenger.of(context).showSnackBar(
-                          const SnackBar(content: Text('Signed out successfully')),
+                          const SnackBar(
+                            content: Text('Signed out successfully'),
+                            duration: Duration(seconds: 3),
+                          ),
                         );
                       },
                       child: const Text('Sign Out', style: TextStyle(color: Colors.red)),

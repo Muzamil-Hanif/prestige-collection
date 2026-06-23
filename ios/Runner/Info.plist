@@ -5,7 +5,7 @@
 	<key>CFBundleDevelopmentRegion</key>
 	<string>$(DEVELOPMENT_LANGUAGE)</string>
 	<key>CFBundleDisplayName</key>
-	<string>PrestigeMen</string>
+	<string>Prestige Collection</string>
 	<key>CFBundleExecutable</key>
 	<string>$(EXECUTABLE_NAME)</string>
 	<key>CFBundleIdentifier</key>
@@ -13,7 +13,7 @@
 	<key>CFBundleInfoDictionaryVersion</key>
 	<string>6.0</string>
 	<key>CFBundleName</key>
-	<string>PrestigeMen</string>
+	<string>Prestige Collection</string>
 	<key>CFBundlePackageType</key>
 	<string>APPL</string>
 	<key>CFBundleShortVersionString</key>
@@ -45,5 +45,22 @@
 	<true/>
 	<key>UIApplicationSupportsIndirectInputEvents</key>
 	<true/>
+	<key>NSCameraUsageDescription</key>
+	<string>Allow camera access to take your profile photo.</string>
+	<key>NSPhotoLibraryUsageDescription</key>
+	<string>Allow photo library access to choose your profile photo.</string>
+	<key>NSPhotoLibraryAddUsageDescription</key>
+	<string>Allow saving photos when updating your profile image.</string>
+	<key>CFBundleURLTypes</key>
+	<array>
+		<dict>
+			<key>CFBundleURLName</key>
+			<string>com.prestigecollection.payment</string>
+			<key>CFBundleURLSchemes</key>
+			<array>
+				<string>prestigecollection</string>
+			</array>
+		</dict>
+	</array>
 </dict>
 </plist>
