@@ -8,6 +8,7 @@ import '../services/api_service.dart';
 import '../services/deep_link_service.dart';
 import '../services/safepay_service.dart';
 import '../utils/address_validation.dart';
+import 'order_details_page.dart';
 
 class CheckoutPage extends StatefulWidget {
   final List<Map<String, dynamic>> cartItems;
@@ -123,10 +124,13 @@ class _CheckoutPageState extends State<CheckoutPage> {
     }
 
     final linkOrderId = uri.queryParameters['order_id'];
+    // The real SafePay tracker comes back on the return link — prefer it over
+    // the pre-checkout session requestId when verifying.
+    final tracker = uri.queryParameters['tracker'];
     debugPrint('Verifying payment for order: $orderId (link: $linkOrderId)');
 
     // Auto-verify immediately (no manual button needed)
-    _verifyAndCompletePayment(orderId, requestId);
+    _verifyAndCompletePayment(orderId, requestId, tracker: tracker);
   }
 
   double get _grandTotal => widget.totalPrice + _shippingCost;
@@ -325,7 +329,7 @@ class _CheckoutPageState extends State<CheckoutPage> {
             _isPlacingOrder = false;
           });
 
-          _showOrderSuccessDialog(Theme.of(context).colorScheme);
+          _showOrderSuccessDialog(Theme.of(context).colorScheme, orderId);
         }
       }
     } catch (e) {
@@ -663,62 +667,53 @@ class _CheckoutPageState extends State<CheckoutPage> {
     );
   }
 
-  Future<void> _verifyAndCompletePayment(String orderId, String requestId) async {
+  Future<void> _verifyAndCompletePayment(
+    String orderId,
+    String requestId, {
+    String? tracker,
+  }) async {
     _showPaymentVerificationDialog();
 
     try {
-      // SafePay webhook processing can take 3-5 seconds, so we retry with exponential backoff
-      const maxAttempts = 4;
-      const baseDuration = Duration(milliseconds: 1500);
-      late SafePaymentResult verificationResult;
-      bool verified = false;
-      String lastErrorNote = '';
-
-      for (int attempt = 0; attempt < maxAttempts; attempt++) {
-        await Future.delayed(
-          baseDuration * (attempt + 1), // 1.5s, 3s, 4.5s, 6s
-        );
-
-        if (!mounted) return;
-
-        verificationResult = await SafePayService.verifyPaymentStatus(
-          orderId: orderId,
-          requestId: requestId,
-        );
-
-        if (verificationResult.success) {
-          verified = true;
-          debugPrint('✓ Payment verification successful on attempt ${attempt + 1}');
-          break;
-        }
-
-        lastErrorNote = verificationResult.note ?? 'Webhook processing in progress...';
-        debugPrint(
-          'Payment verification attempt ${attempt + 1}/$maxAttempts: '
-          '${verificationResult.message} - $lastErrorNote',
-        );
-
-        // On last attempt, show user what we got
-        if (attempt == maxAttempts - 1) {
-          debugPrint(
-            'Final verification attempt failed after ${(baseDuration * maxAttempts).inSeconds}s. '
-            'Status: $lastErrorNote',
-          );
-        }
-      }
+      // Poll until the payment resolves (captured / definitive failure) or the
+      // window elapses while still pending. A slow webhook stays `pending` and
+      // keeps polling instead of surfacing as a false "Payment Failed".
+      final result = await SafePayService.pollPaymentStatus(
+        orderId: orderId,
+        requestId: requestId,
+        tracker: tracker,
+        maxWait: const Duration(seconds: 40),
+        onAttempt: (attempt, r) => debugPrint(
+          'Payment verify attempt $attempt: '
+          'status=${r.paymentStatus} success=${r.success} pending=${r.pending}',
+        ),
+      );
 
       if (!mounted) return;
       Navigator.of(context).pop(); // Close verification dialog
 
-      if (verified) {
-        _showOrderSuccessDialog(Theme.of(context).colorScheme);
-      } else {
+      if (result.success) {
+        _showOrderSuccessDialog(Theme.of(context).colorScheme, orderId);
+      } else if (result.pending) {
+        // Not confirmed yet, but NOT a failure — webhook will finalize it.
         ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(
             content: Text(
-              'Payment verification is taking longer than expected. '
-              '$lastErrorNote\n\n'
-              'You can check your email or the My Orders page for order status.',
+              'Your payment is still being confirmed. '
+              'It will appear in My Orders shortly — no need to pay again.',
+            ),
+            backgroundColor: Theme.of(context).colorScheme.surface,
+            duration: const Duration(seconds: 6),
+          ),
+        );
+        setState(() => _isPlacingOrder = false);
+      } else {
+        // Definitive failure reported by SafePay.
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text(
+              result.note ??
+                  'Payment was not completed. Please try again or use another method.',
             ),
             backgroundColor: Theme.of(context).colorScheme.error,
             duration: const Duration(seconds: 5),
@@ -817,7 +812,7 @@ class _CheckoutPageState extends State<CheckoutPage> {
     );
   }
 
-  void _showOrderSuccessDialog(ColorScheme cs) {
+  void _showOrderSuccessDialog(ColorScheme cs, String orderId) {
     showDialog<void>(
       context: context,
       barrierDismissible: false,
@@ -934,6 +929,7 @@ class _CheckoutPageState extends State<CheckoutPage> {
                       ),
                     ),
                     const SizedBox(height: 26),
+                    // Primary action: jump straight to the order's details.
                     SizedBox(
                       width: double.infinity,
                       height: 50,
@@ -942,7 +938,14 @@ class _CheckoutPageState extends State<CheckoutPage> {
                           Navigator.of(dialogContext).pop();
                           if (!mounted) return;
                           widget.onOrderPlaced();
-                          Navigator.of(context).pop();
+                          // Replace the checkout route with Order Details so
+                          // "back" returns the user to their cart/home, not here.
+                          Navigator.of(context).pushReplacement(
+                            MaterialPageRoute(
+                              builder: (_) =>
+                                  OrderDetailsPage(orderId: orderId),
+                            ),
+                          );
                         },
                         style: ElevatedButton.styleFrom(
                           elevation: 0,
@@ -953,9 +956,38 @@ class _CheckoutPageState extends State<CheckoutPage> {
                           ),
                         ),
                         child: Text(
-                          'OK',
+                          'View Order',
                           style: TextStyle(
                             color: cs.onSecondary,
+                            fontWeight: FontWeight.w700,
+                            fontSize: 16,
+                          ),
+                        ),
+                      ),
+                    ),
+                    const SizedBox(height: 12),
+                    // Secondary action: close and keep shopping.
+                    SizedBox(
+                      width: double.infinity,
+                      height: 50,
+                      child: OutlinedButton(
+                        onPressed: () {
+                          Navigator.of(dialogContext).pop();
+                          if (!mounted) return;
+                          widget.onOrderPlaced();
+                          Navigator.of(context).pop();
+                        },
+                        style: OutlinedButton.styleFrom(
+                          foregroundColor: cs.secondary,
+                          side: BorderSide(color: cs.secondary, width: 1.5),
+                          shape: RoundedRectangleBorder(
+                            borderRadius: BorderRadius.circular(14),
+                          ),
+                        ),
+                        child: Text(
+                          'Continue Shopping',
+                          style: TextStyle(
+                            color: cs.secondary,
                             fontWeight: FontWeight.w700,
                             fontSize: 16,
                           ),

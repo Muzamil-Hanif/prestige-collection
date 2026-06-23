@@ -13,6 +13,14 @@ class SafePaymentResult {
   final String? redirectUrl;
   final String? note;
 
+  /// True while the payment is still being confirmed (webhook/tracker not
+  /// final yet). The UI keeps polling on `pending` instead of showing a false
+  /// "Payment Failed". Distinct from a definitive failure (`!success && !pending`).
+  final bool pending;
+
+  /// Raw backend status: 'captured' | 'failed' | 'pending'.
+  final String? paymentStatus;
+
   SafePaymentResult({
     required this.success,
     this.transactionId,
@@ -20,6 +28,8 @@ class SafePaymentResult {
     this.requestId,
     this.redirectUrl,
     this.note,
+    this.pending = false,
+    this.paymentStatus,
   });
 }
 
@@ -127,10 +137,19 @@ class SafePayService {
     }
   }
 
-  /// Verify payment status after SafePay redirect
+  /// Verify payment status after SafePay redirect.
+  ///
+  /// [tracker] is the real SafePay tracker token delivered on the return
+  /// deep-link/web callback — when available it's sent as `?tracker=` so the
+  /// backend can verify against the authoritative tracker rather than the
+  /// pre-checkout session [requestId].
+  ///
+  /// On a non-200/network error this returns `pending` (not a hard failure) so
+  /// callers keep polling and let the webhook confirm authoritatively.
   static Future<SafePaymentResult> verifyPaymentStatus({
     required String orderId,
     required String requestId,
+    String? tracker,
   }) async {
     try {
       final token = await StorageService.getToken();
@@ -141,33 +160,90 @@ class SafePayService {
 
       final url = Uri.parse(
         '${ApiConfig.baseUrl}$_paymentEndpoint/verify/$orderId/$requestId',
+      ).replace(
+        queryParameters: (tracker != null && tracker.isNotEmpty)
+            ? {'tracker': tracker}
+            : null,
       );
       final response = await http.get(url, headers: headers);
 
       if (response.statusCode == 200) {
         final data = jsonDecode(response.body);
         final success = data['success'] == true;
+        final paymentStatus = data['paymentStatus'] as String?;
+        // Treat the backend `pending` flag (or a 'pending' status) as not-final.
+        final pending =
+            data['pending'] == true ||
+            (!success && (paymentStatus == null || paymentStatus == 'pending'));
         return SafePaymentResult(
           success: success,
+          pending: pending,
+          paymentStatus: paymentStatus,
           transactionId: data['transactionId'] as String?,
-          message: success ? 'Payment successful' : 'Payment failed',
+          message: success
+              ? 'Payment successful'
+              : (pending ? 'Awaiting confirmation' : 'Payment failed'),
           note: data['note'] as String?,
         );
       } else {
+        // A transient server error is not a definitive failure — keep polling.
         return SafePaymentResult(
           success: false,
+          pending: true,
           message: _extractErrorMessage(response.body, 'Failed to verify payment'),
-          note: 'Server error - payment status could not be verified',
+          note: 'Server error - payment status could not be verified yet',
         );
       }
     } catch (e) {
       debugPrint('Payment verification error: $e');
       return SafePaymentResult(
         success: false,
+        pending: true,
         message: 'Failed to verify payment: $e',
         note: 'Network error - check your connection and try again',
       );
     }
+  }
+
+  /// Poll [verifyPaymentStatus] until the payment resolves (captured or a
+  /// definitive failure) or [maxWait] elapses. Returns as soon as the status is
+  /// final; while `pending` it keeps retrying with a gentle backoff so a slow
+  /// webhook no longer surfaces as a false "Payment Failed".
+  ///
+  /// [onAttempt] (optional) fires after each attempt for progress/debug UI.
+  static Future<SafePaymentResult> pollPaymentStatus({
+    required String orderId,
+    required String requestId,
+    String? tracker,
+    Duration maxWait = const Duration(seconds: 40),
+    void Function(int attempt, SafePaymentResult result)? onAttempt,
+  }) async {
+    final deadline = DateTime.now().add(maxWait);
+    SafePaymentResult last = SafePaymentResult(
+      success: false,
+      pending: true,
+      note: 'Awaiting payment confirmation...',
+    );
+    var attempt = 0;
+
+    while (DateTime.now().isBefore(deadline)) {
+      // Backoff: 1.5s, 2.5s, 3.5s, ... capped at 5s.
+      final delayMs = (1500 + attempt * 1000).clamp(1500, 5000);
+      await Future.delayed(Duration(milliseconds: delayMs));
+
+      last = await verifyPaymentStatus(
+        orderId: orderId,
+        requestId: requestId,
+        tracker: tracker,
+      );
+      attempt++;
+      onAttempt?.call(attempt, last);
+
+      // Stop on any final result: confirmed success OR definitive failure.
+      if (last.success || !last.pending) return last;
+    }
+
+    return last; // Timed out while still pending.
   }
 
   /// Open payment page in WebView (for in-app payment)

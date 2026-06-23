@@ -5,6 +5,7 @@ import 'package:flutter/foundation.dart';
 import 'dart:convert';
 import 'pages/splash_screen.dart';
 import 'pages/sign_in_page.dart';
+import 'pages/payment_callback_page.dart';
 import 'pages/home_page_clean.dart';
 import 'pages/products_page.dart';
 import 'pages/my_cart.dart';
@@ -128,14 +129,55 @@ class _WebHomeGateState extends State<_WebHomeGate> {
   }
 
   Future<void> _checkLoginAndNavigate() async {
+    // On web the SafePay callback redirects the browser back to
+    // `/#/payment-callback?status=...&order_id=...&tracker=...`. Detect that on
+    // startup and resume the verify/success flow instead of going to home.
+    final callback = _parsePaymentCallback();
+
     final isLoggedIn = await StorageService.isLoggedIn();
     if (!mounted) return;
+
+    if (callback != null) {
+      Navigator.of(context).pushReplacement(
+        MaterialPageRoute(
+          builder: (context) => PaymentCallbackPage(
+            orderId: callback['order_id'],
+            tracker: callback['tracker'],
+            status: callback['status'] ?? 'success',
+          ),
+        ),
+      );
+      return;
+    }
 
     Navigator.of(context).pushReplacement(
       MaterialPageRoute(
         builder: (context) => isLoggedIn ? const MainScreen() : const SignInPage(),
       ),
     );
+  }
+
+  /// Pulls SafePay return params out of the current browser URL, whether they
+  /// arrived on the hash fragment (`/#/payment-callback?...`, Flutter's default
+  /// web URL strategy) or the path (`/payment-callback?...`). Returns null when
+  /// this isn't a payment-callback load.
+  Map<String, String>? _parsePaymentCallback() {
+    final base = Uri.base;
+
+    // Path strategy: query params sit on the URI directly.
+    if (base.path.contains('payment-callback') &&
+        base.queryParameters.isNotEmpty) {
+      return base.queryParameters;
+    }
+
+    // Hash strategy: fragment looks like "/payment-callback?status=...".
+    final fragment = base.fragment;
+    if (fragment.contains('payment-callback')) {
+      final qIndex = fragment.indexOf('?');
+      if (qIndex == -1) return {};
+      return Uri.splitQueryString(fragment.substring(qIndex + 1));
+    }
+    return null;
   }
 
   @override
